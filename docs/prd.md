@@ -222,3 +222,36 @@
 1.  界面上有“导出”按钮。
 2.  点击后能打开文件保存对话框。
 3.  能将当前账户列表的所有内容（用户名、状态、备注）保存到用户指定的CSV文件中。
+
+## 附录A： 账号注册流程
+
+### 一些XPath供参考
+> 网址：https://wan.360.cn/，搜索到以下XPath可以参考
+
+#### 登录窗口
+账号[输入框]: `/html/body/div/div/div[2]/div/div/div/div[2]/form/div[1]/div/div/input`
+密码[输入框]: `/html/body/div/div/div[2]/div/div/div/div[2]/form/div[2]/div/div/input`
+同意登录协议[单选框]: `/html/body/div/div/div[2]/div/div/div/div[2]/form/div[4]/div/label/input`
+登录[按钮]: `/html/body/div/div/div[2]/div/div/div/div[2]/form/div[5]/input`
+注册[按钮]: `/html/body/div/div/div[2]/div/div/div/div[2]/form/div[6]/div[2]/a[1]`
+
+#### 注册窗口 （点击注册按钮等待3秒后出现）
+注册用户名[输入框]: `/html/body/div[9]/div[2]/div/div/div/form/div[1]/div/div[1]/div/div/input`
+初始密码[输入框]: `/html/body/div[9]/div[2]/div/div/div/form/div[1]/div/div[2]/div/div/input`
+再次输入密码[输入框]: `/html/body/div[9]/div[2]/div/div/div/form/div[1]/div/div[3]/div/div/input`
+同意注册协议[单选框]: `/html/body/div[9]/div[2]/div/div/div/form/div[2]/label/input`
+确认注册[按钮]: `/html/body/div[9]/div[2]/div/div/div/form/div[3]/input`
+
+#### 验证登录成功/注册成功 （注册成功会自动登录）
+检查<a>标签的内容： `/html/body/div[1]/div/span[2]/a[2]`
+<a>标签内容为 `[退出]` 证明当前“已成功登录账号”
+
+
+### 账号注册流程
+  1. 打开 https://wan.360.cn/
+  2. 点击[注册按钮]
+  3. 输入需要注册的账号、密码
+  4. 同意注册协议
+  5. 点击注册按钮
+  6. 等待几秒后验证当前为“已登录”状态，则代表注册成功
+  7. 流程结束
