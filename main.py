@@ -17,16 +17,13 @@ def main():
             from src.cli import main as cli_main
             cli_main()
         else:
-            # GUI mode - run existing startup
-            from src.startup import perform_startup
-            perform_startup()
+            # GUI mode - use PySide6 Widgets MVVM architecture
+            from src.gui_startup import start_gui_application
+            start_gui_application()
     else:
-        # GUI mode - run existing startup
-        # Import resources (will be needed when we set up proper resource compilation)
-        # import rc_project  # noqa
-        
-        from src.startup import perform_startup
-        perform_startup()
+        # GUI mode - use PySide6 Widgets MVVM architecture
+        from src.gui_startup import start_gui_application
+        start_gui_application()
 
 
 if __name__ == "__main__":
