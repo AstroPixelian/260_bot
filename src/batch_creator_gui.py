@@ -20,14 +20,18 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QGridLayout, QPushButton, QTableWidget, QTableWidgetItem, 
     QTextEdit, QProgressBar, QLabel, QFrame, QHeaderView,
-    QFileDialog, QMessageBox, QInputDialog, QStatusBar, QSplitter
+    QFileDialog, QMessageBox, QInputDialog, QStatusBar, QSplitter,
+    QMenuBar, QMenu
 )
 from PySide6.QtCore import (
-    Qt, QTimer, Signal, QThread, QSize, QRect
+    Qt, QTimer, Signal, QThread, QSize, QRect, QCoreApplication
 )
 from PySide6.QtGui import (
-    QFont, QPalette, QColor, QPainter, QPen, QBrush, QIcon, QPixmap
+    QFont, QPalette, QColor, QPainter, QPen, QBrush, QIcon, QPixmap, QAction
 )
+
+# Import translation manager
+from translation_manager import init_translation_manager, get_translation_manager, tr
 
 
 # Data Models
@@ -36,6 +40,10 @@ class AccountStatus(Enum):
     PROCESSING = "Processing" 
     SUCCESS = "Success"
     FAILED = "Failed"
+    
+    def get_translated_name(self):
+        """Get translated status name"""
+        return tr(self.value, "AccountStatus")
 
 
 @dataclass
@@ -99,6 +107,11 @@ class BatchCreatorMainWindow(QMainWindow):
         self.processing_timer.timeout.connect(self.process_next_account)
         self.is_paused = False
         
+        # Translation manager
+        self.translation_manager = get_translation_manager()
+        if self.translation_manager:
+            self.translation_manager.languageChanged.connect(self.retranslate_ui)
+        
         # Setup logging
         self.setup_logging()
         
@@ -110,7 +123,113 @@ class BatchCreatorMainWindow(QMainWindow):
         # Connect signals
         self.connect_signals()
         
-        self.log_message("Application started - Ready to import or generate accounts")
+        self.log_message(tr("Application started - Ready to import or generate accounts"))
+    
+    def create_menu_bar(self):
+        """Create application menu bar with language selection"""
+        menubar = self.menuBar()
+        
+        # Settings menu
+        settings_menu = menubar.addMenu(tr("Settings"))
+        
+        # Language submenu
+        language_menu = settings_menu.addMenu(tr("Language"))
+        
+        if self.translation_manager:
+            languages = self.translation_manager.get_available_languages()
+            current_locale = self.translation_manager.get_current_locale()
+            
+            for locale, info in languages.items():
+                action = QAction(info['display_name'], self)
+                action.setCheckable(True)
+                action.setChecked(locale == current_locale)
+                action.triggered.connect(lambda checked, loc=locale: self.change_language(loc))
+                language_menu.addAction(action)
+    
+    def change_language(self, locale: str):
+        """Change application language"""
+        if self.translation_manager:
+            success = self.translation_manager.switch_language(locale)
+            if success:
+                # Update menu checkmarks
+                self.update_language_menu_checks(locale)
+    
+    def update_language_menu_checks(self, current_locale: str):
+        """Update language menu checkmarks"""
+        menubar = self.menuBar()
+        if menubar.actions():
+            settings_menu = menubar.actions()[0].menu()  # First menu is Settings
+            if settings_menu and settings_menu.actions():
+                language_menu = settings_menu.actions()[0].menu()  # First submenu is Language
+                
+                if language_menu:
+                    languages = self.translation_manager.get_available_languages()
+                    for i, (locale, info) in enumerate(languages.items()):
+                        if i < len(language_menu.actions()):
+                            action = language_menu.actions()[i]
+                            action.setChecked(locale == current_locale)
+    
+    def retranslate_ui(self, locale: str):
+        """Retranslate all UI elements when language changes"""
+        # Update window title
+        self.setWindowTitle(tr("360 Batch Account Creator"))
+        
+        # Update menu bar
+        menubar = self.menuBar()
+        menubar.clear()
+        self.create_menu_bar()
+        
+        # Update buttons
+        self.btn_import.setText(tr("📁 Import CSV"))
+        self.btn_import.setToolTip(tr("Import account data from CSV file"))
+        
+        self.btn_generate.setText(tr("⚡ Generate Accounts"))
+        self.btn_generate.setToolTip(tr("Generate random test accounts"))
+        
+        self.btn_start.setText(tr("▶️ Start"))
+        self.btn_start.setToolTip(tr("Start batch registration process"))
+        
+        # Update pause button text based on current state
+        if self.is_paused:
+            self.btn_pause.setText(tr("▶️ Resume"))
+        else:
+            self.btn_pause.setText(tr("⏸️ Pause"))
+        self.btn_pause.setToolTip(tr("Pause/Resume registration process"))
+        
+        self.btn_stop.setText(tr("⏹️ Stop"))
+        self.btn_stop.setToolTip(tr("Stop registration process"))
+        
+        self.btn_export.setText(tr("💾 Export Results"))
+        self.btn_export.setToolTip(tr("Export results to CSV file"))
+        
+        # Update progress labels
+        self.lbl_total_caption.setText(tr("Total:"))
+        self.lbl_success_caption.setText(tr("Success:"))
+        self.lbl_failed_caption.setText(tr("Failed:"))
+        self.lbl_remaining_caption.setText(tr("Remaining:"))
+        
+        # Update section headers
+        self.header_label.setText(tr("Account List"))
+        self.log_header_label.setText(tr("Log Output"))
+        
+        # Update table headers
+        self.table_accounts.setHorizontalHeaderLabels([tr("Username"), tr("Status"), tr("Notes")])
+        
+        # Update table content to refresh status displays
+        self.update_table()
+        
+        # Update status bar if needed
+        current_status = self.status_bar.currentMessage()
+        if current_status in ["Ready", "准备就绪"]:
+            self.status_bar.showMessage(tr("Ready"))
+        elif current_status in ["Processing...", "处理中..."]:
+            self.status_bar.showMessage(tr("Processing..."))
+        elif current_status in ["Paused", "已暂停"]:
+            self.status_bar.showMessage(tr("Paused"))
+        elif current_status in ["Stopped", "已停止"]:
+            self.status_bar.showMessage(tr("Stopped"))
+        elif current_status in ["Completed", "已完成"]:
+            self.status_bar.showMessage(tr("Completed"))
     
     def setup_logging(self):
         """Setup logging to both file and GUI"""
@@ -129,9 +248,12 @@ class BatchCreatorMainWindow(QMainWindow):
     
     def init_ui(self):
         """Initialize the main UI components"""
-        self.setWindowTitle("360 Batch Account Creator")
+        self.setWindowTitle(tr("360 Batch Account Creator"))
         self.setMinimumSize(800, 600)
         self.resize(1000, 700)
+        
+        # Create menu bar
+        self.create_menu_bar()
         
         # Central widget and main layout
         central_widget = QWidget()
@@ -155,7 +277,7 @@ class BatchCreatorMainWindow(QMainWindow):
         # Status Bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("Ready")
+        self.status_bar.showMessage(tr("Ready"))
     
     def create_control_panel(self, parent_layout):
         """Create the top control panel with buttons"""
@@ -169,38 +291,38 @@ class BatchCreatorMainWindow(QMainWindow):
         layout.setContentsMargins(16, 12, 16, 12)
         
         # Import CSV button
-        self.btn_import = QPushButton("📁 Import CSV")
-        self.btn_import.setToolTip("Import account data from CSV file")
+        self.btn_import = QPushButton(tr("📁 Import CSV"))
+        self.btn_import.setToolTip(tr("Import account data from CSV file"))
         layout.addWidget(self.btn_import)
         
         # Generate Accounts button
-        self.btn_generate = QPushButton("⚡ Generate Accounts") 
-        self.btn_generate.setToolTip("Generate random test accounts")
+        self.btn_generate = QPushButton(tr("⚡ Generate Accounts")) 
+        self.btn_generate.setToolTip(tr("Generate random test accounts"))
         layout.addWidget(self.btn_generate)
         
         layout.addItem(self.create_spacer(20))
         
         # Start button (primary)
-        self.btn_start = QPushButton("▶️ Start")
+        self.btn_start = QPushButton(tr("▶️ Start"))
         self.btn_start.setObjectName("primary_button")
-        self.btn_start.setToolTip("Start batch registration process")
+        self.btn_start.setToolTip(tr("Start batch registration process"))
         layout.addWidget(self.btn_start)
         
         # Pause button
-        self.btn_pause = QPushButton("⏸️ Pause")
-        self.btn_pause.setToolTip("Pause/Resume registration process")
+        self.btn_pause = QPushButton(tr("⏸️ Pause"))
+        self.btn_pause.setToolTip(tr("Pause/Resume registration process"))
         layout.addWidget(self.btn_pause)
         
         # Stop button
-        self.btn_stop = QPushButton("⏹️ Stop")
-        self.btn_stop.setToolTip("Stop registration process")
+        self.btn_stop = QPushButton(tr("⏹️ Stop"))
+        self.btn_stop.setToolTip(tr("Stop registration process"))
         layout.addWidget(self.btn_stop)
         
         layout.addItem(self.create_spacer(20))
         
         # Export Results button
-        self.btn_export = QPushButton("💾 Export Results")
-        self.btn_export.setToolTip("Export results to CSV file")
+        self.btn_export = QPushButton(tr("💾 Export Results"))
+        self.btn_export.setToolTip(tr("Export results to CSV file"))
         layout.addWidget(self.btn_export)
         
         layout.addStretch()
@@ -217,7 +339,7 @@ class BatchCreatorMainWindow(QMainWindow):
         
         # Progress bar
         progress_layout = QVBoxLayout()
-        progress_label = QLabel("Progress:")
+        progress_label = QLabel(tr("Progress:"))
         progress_label.setFont(QFont("", 9))
         progress_layout.addWidget(progress_label)
         
@@ -232,25 +354,29 @@ class BatchCreatorMainWindow(QMainWindow):
         stats_layout = QGridLayout()
         
         # Total
-        stats_layout.addWidget(QLabel("Total:"), 0, 0)
+        self.lbl_total_caption = QLabel(tr("Total:"))
+        stats_layout.addWidget(self.lbl_total_caption, 0, 0)
         self.lbl_total = QLabel("0")
         self.lbl_total.setStyleSheet("font-weight: bold;")
         stats_layout.addWidget(self.lbl_total, 0, 1)
         
         # Success  
-        stats_layout.addWidget(QLabel("Success:"), 0, 2)
+        self.lbl_success_caption = QLabel(tr("Success:"))
+        stats_layout.addWidget(self.lbl_success_caption, 0, 2)
         self.lbl_success = QLabel("0")
         self.lbl_success.setStyleSheet("font-weight: bold; color: #107C10;")
         stats_layout.addWidget(self.lbl_success, 0, 3)
         
         # Failed
-        stats_layout.addWidget(QLabel("Failed:"), 1, 0)
+        self.lbl_failed_caption = QLabel(tr("Failed:"))
+        stats_layout.addWidget(self.lbl_failed_caption, 1, 0)
         self.lbl_failed = QLabel("0")
         self.lbl_failed.setStyleSheet("font-weight: bold; color: #D83B01;")
         stats_layout.addWidget(self.lbl_failed, 1, 1)
         
         # Remaining
-        stats_layout.addWidget(QLabel("Remaining:"), 1, 2)
+        self.lbl_remaining_caption = QLabel(tr("Remaining:"))
+        stats_layout.addWidget(self.lbl_remaining_caption, 1, 2)
         self.lbl_remaining = QLabel("0")
         self.lbl_remaining.setStyleSheet("font-weight: bold; color: #666666;")
         stats_layout.addWidget(self.lbl_remaining, 1, 3)
@@ -268,14 +394,14 @@ class BatchCreatorMainWindow(QMainWindow):
         table_layout.setContentsMargins(8, 8, 8, 8)
         
         # Table header
-        header_label = QLabel("Account List")
-        header_label.setFont(QFont("", 10, QFont.Bold))
-        table_layout.addWidget(header_label)
+        self.header_label = QLabel(tr("Account List"))
+        self.header_label.setFont(QFont("", 10, QFont.Bold))
+        table_layout.addWidget(self.header_label)
         
         # Table widget
         self.table_accounts = QTableWidget()
         self.table_accounts.setColumnCount(3)
-        self.table_accounts.setHorizontalHeaderLabels(["Username", "Status", "Notes"])
+        self.table_accounts.setHorizontalHeaderLabels([tr("Username"), tr("Status"), tr("Notes")])
         
         # Configure table
         header = self.table_accounts.horizontalHeader()
@@ -301,9 +427,9 @@ class BatchCreatorMainWindow(QMainWindow):
         layout.setContentsMargins(8, 8, 8, 8)
         
         # Log header
-        header_label = QLabel("Log Output")
-        header_label.setFont(QFont("", 10, QFont.Bold))
-        layout.addWidget(header_label)
+        self.log_header_label = QLabel(tr("Log Output"))
+        self.log_header_label.setFont(QFont("", 10, QFont.Bold))
+        layout.addWidget(self.log_header_label)
         
         # Log text area
         self.txt_log = QTextEdit()
@@ -434,9 +560,9 @@ class BatchCreatorMainWindow(QMainWindow):
         
         # Update pause button text
         if self.is_paused:
-            self.btn_pause.setText("▶️ Resume")
+            self.btn_pause.setText(tr("▶️ Resume"))
         else:
-            self.btn_pause.setText("⏸️ Pause")
+            self.btn_pause.setText(tr("⏸️ Pause"))
     
     def update_statistics(self):
         """Update the statistics display"""
@@ -476,7 +602,7 @@ class BatchCreatorMainWindow(QMainWindow):
             status_layout.addWidget(icon)
             
             # Status text
-            status_text = QLabel(account.status.value)
+            status_text = QLabel(account.status.get_translated_name())
             status_colors = {
                 AccountStatus.QUEUED: "#666666",
                 AccountStatus.PROCESSING: "#0078D4",
@@ -509,7 +635,7 @@ class BatchCreatorMainWindow(QMainWindow):
     def import_csv(self):
         """Import accounts from CSV file"""
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Import CSV File", "", "CSV Files (*.csv)"
+            self, tr("Import CSV File"), "", tr("CSV Files (*.csv)")
         )
         
         if not file_path:
@@ -537,19 +663,19 @@ class BatchCreatorMainWindow(QMainWindow):
                 self.update_statistics()
                 self.update_button_states()
                 
-                self.log_message(f"Successfully imported {len(accounts)} accounts from CSV")
-                QMessageBox.information(self, "Success", 
-                    f"Imported {len(accounts)} accounts successfully!")
+                self.log_message(tr("Successfully imported %1 accounts from CSV").arg(len(accounts)))
+                QMessageBox.information(self, tr("Success"), 
+                    tr("Imported %1 accounts successfully!").arg(len(accounts)))
                 
         except Exception as e:
-            self.log_message(f"Failed to import CSV: {str(e)}")
-            QMessageBox.critical(self, "Error", f"Failed to import CSV file:\n{str(e)}")
+            self.log_message(tr("Failed to import CSV: %1").arg(str(e)))
+            QMessageBox.critical(self, tr("Error"), tr("Failed to import CSV file:\n%1").arg(str(e)))
     
     def generate_accounts(self):
         """Generate random test accounts"""
         count, ok = QInputDialog.getInt(
-            self, "Generate Accounts", 
-            "How many accounts to generate?",
+            self, tr("Generate Accounts"), 
+            tr("How many accounts to generate?"),
             value=10, min=1, max=1000
         )
         
@@ -573,9 +699,9 @@ class BatchCreatorMainWindow(QMainWindow):
         self.update_statistics()
         self.update_button_states()
         
-        self.log_message(f"Generated {count} random accounts")
-        QMessageBox.information(self, "Success", 
-            f"Generated {count} accounts successfully!")
+        self.log_message(tr("Generated %1 random accounts").arg(count))
+        QMessageBox.information(self, tr("Success"), 
+            tr("Generated %1 accounts successfully!").arg(count))
     
     def start_processing(self):
         """Start the batch processing"""
@@ -597,8 +723,8 @@ class BatchCreatorMainWindow(QMainWindow):
         # Start processing timer (simulate registration process)
         self.processing_timer.start(1500)  # 1.5 seconds per account
         
-        self.log_message(f"Started batch processing for {len(self.accounts)} accounts")
-        self.status_bar.showMessage("Processing...")
+        self.log_message(tr("Started batch processing for %1 accounts").arg(len(self.accounts)))
+        self.status_bar.showMessage(tr("Processing..."))
     
     def pause_processing(self):
         """Pause or resume processing"""
@@ -607,14 +733,14 @@ class BatchCreatorMainWindow(QMainWindow):
                 # Resume
                 self.processing_timer.start()
                 self.is_paused = False
-                self.log_message("Processing resumed")
-                self.status_bar.showMessage("Processing...")
+                self.log_message(tr("Processing resumed"))
+                self.status_bar.showMessage(tr("Processing..."))
             else:
                 # Pause
                 self.processing_timer.stop()
                 self.is_paused = True
-                self.log_message("Processing paused")
-                self.status_bar.showMessage("Paused")
+                self.log_message(tr("Processing paused"))
+                self.status_bar.showMessage(tr("Paused"))
         
         self.update_button_states()
     
@@ -634,8 +760,8 @@ class BatchCreatorMainWindow(QMainWindow):
         self.update_statistics()
         self.update_button_states()
         
-        self.log_message("Processing stopped")
-        self.status_bar.showMessage("Stopped")
+        self.log_message(tr("Processing stopped"))
+        self.status_bar.showMessage(tr("Stopped"))
     
     def process_next_account(self):
         """Process the next account (simulation)"""
@@ -644,26 +770,26 @@ class BatchCreatorMainWindow(QMainWindow):
             self.processing_timer.stop()
             self.is_paused = False
             self.update_button_states()
-            self.log_message("Batch processing completed!")
-            self.status_bar.showMessage("Completed")
+            self.log_message(tr("Batch processing completed!"))
+            self.status_bar.showMessage(tr("Completed"))
             
             # Show completion message
             success_count = len([acc for acc in self.accounts if acc.status == AccountStatus.SUCCESS])
             failed_count = len([acc for acc in self.accounts if acc.status == AccountStatus.FAILED])
             
-            QMessageBox.information(self, "Processing Complete", 
-                f"Batch processing completed!\n\nSuccess: {success_count}\nFailed: {failed_count}")
+            QMessageBox.information(self, tr("Processing Complete"), 
+                tr("Batch processing completed!\n\nSuccess: %1\nFailed: %2").arg(success_count).arg(failed_count))
             return
         
         # Get current account
         account = self.accounts[self.current_processing_index]
         account.status = AccountStatus.PROCESSING
-        account.notes = "Registering account..."
+        account.notes = tr("Registering account...", "FailureReasons")
         
         self.update_table()
         self.update_statistics()
         
-        self.log_message(f"Processing account: {account.username}")
+        self.log_message(tr("Processing account: %1").arg(account.username))
         
         # Simulate processing result (80% success rate)
         QTimer.singleShot(800, self.complete_current_account)
@@ -678,19 +804,19 @@ class BatchCreatorMainWindow(QMainWindow):
         # Simulate random success/failure (80% success rate)
         if random.random() < 0.8:
             account.status = AccountStatus.SUCCESS
-            account.notes = "Registered successfully"
-            self.log_message(f"SUCCESS: {account.username} registered successfully")
+            account.notes = tr("Registered successfully", "FailureReasons")
+            self.log_message(tr("SUCCESS: %1 registered successfully").arg(account.username))
         else:
             account.status = AccountStatus.FAILED
             failure_reasons = [
-                "Username already taken",
-                "Invalid email format", 
-                "Network timeout",
-                "Captcha required",
-                "Rate limit exceeded"
+                tr("Username already taken", "FailureReasons"),
+                tr("Invalid email format", "FailureReasons"), 
+                tr("Network timeout", "FailureReasons"),
+                tr("Captcha required", "FailureReasons"),
+                tr("Rate limit exceeded", "FailureReasons")
             ]
             account.notes = random.choice(failure_reasons)
-            self.log_message(f"FAILED: {account.username} - {account.notes}")
+            self.log_message(tr("FAILED: %1 - %2").arg(account.username).arg(account.notes))
         
         self.current_processing_index += 1
         
@@ -703,9 +829,9 @@ class BatchCreatorMainWindow(QMainWindow):
             return
         
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "Export Results", 
+            self, tr("Export Results"), 
             f"batch_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            "CSV Files (*.csv)"
+            tr("CSV Files (*.csv)")
         )
         
         if not file_path:
@@ -725,13 +851,13 @@ class BatchCreatorMainWindow(QMainWindow):
                         datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     ])
             
-            self.log_message(f"Results exported to: {file_path}")
-            QMessageBox.information(self, "Success", 
-                f"Results exported successfully!\n\nFile: {os.path.basename(file_path)}")
+            self.log_message(tr("Results exported to: %1").arg(file_path))
+            QMessageBox.information(self, tr("Success"), 
+                tr("Results exported successfully!\n\nFile: %1").arg(os.path.basename(file_path)))
             
         except Exception as e:
-            self.log_message(f"Failed to export results: {str(e)}")
-            QMessageBox.critical(self, "Error", f"Failed to export results:\n{str(e)}")
+            self.log_message(tr("Failed to export results: %1").arg(str(e)))
+            QMessageBox.critical(self, tr("Error"), tr("Failed to export results:\n%1").arg(str(e)))
 
 
 # Main Application Class
@@ -743,6 +869,10 @@ class BatchCreatorApp(QApplication):
         self.setApplicationName("360 Batch Account Creator")
         self.setApplicationVersion("1.0.0")
         self.setOrganizationName("360 Tools")
+        
+        # Initialize translation manager
+        self.translation_manager = init_translation_manager(self)
+        self.translation_manager.initialize_language()
         
         # Create main window
         self.main_window = BatchCreatorMainWindow()
