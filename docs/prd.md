@@ -163,7 +163,7 @@
 │   ├── viewmodels/                 # 视图模型层
 │   │   └── batch_creator_viewmodel.py
 │   ├── translation_manager.py      # 国际化管理
-│   └── batch_creator_gui_refactored.py  # 主GUI
+│   └── batch_creator_gui.py  # 主GUI
 ├── main.py                         # 应用入口
 ├── test_gui.py                     # GUI测试入口
 └── pyproject.toml                  # 项目配置

@@ -21,7 +21,7 @@
 ```mermaid
 graph TD
     subgraph "表示层 (Presentation Layer)"
-        UI[主窗口 GUI<br/>batch_creator_gui_refactored.py]
+        UI[主窗口 GUI<br/>batch_creator_gui.py]
         Widgets[自定义组件<br/>CopyableTextWidget<br/>PasswordWidget<br/>StatusIcon]
     end
     
@@ -192,8 +192,7 @@ class AccountStatus(Enum):
 │   │   ├── __init__.py
 │   │   └── batch_creator_viewmodel.py
 │   ├── translation_manager.py      # 国际化管理
-│   ├── batch_creator_gui_refactored.py  # 主GUI (重构版)
-│   └── batch_creator_gui.py        # 原GUI (保留作参考)
+│   └── batch_creator_gui.py  # 主GUI (MVVM版)
 ├── tests/                          # 测试目录
 ├── logs/                           # 日志目录
 ├── data/                           # 静态资源

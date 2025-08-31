@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """
-Non-GUI test for internationalization functionality
+Unit tests for TranslationManager core functionality
 """
 
 import sys
 import os
-sys.path.insert(0, os.path.dirname(__file__))
+from pathlib import Path
+
+# Add project root to Python path
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
 
 from PySide6.QtWidgets import QApplication
 from src.translation_manager import TranslationManager, tr

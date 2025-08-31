@@ -206,7 +206,7 @@ class BatchCreatorViewModel(QObject):
 
 4. **View层**: 更新UI界面
 ```python
-# src/batch_creator_gui_refactored.py
+# src/batch_creator_gui.py
 def setup_ui(self):
     # 连接信号槽
     self.view_model.new_feature_updated.connect(self.on_new_feature_updated)
@@ -394,7 +394,7 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtTest import QTest
 from PySide6.QtCore import Qt
 
-from src.batch_creator_gui_refactored import BatchCreatorMainWindow
+from src.batch_creator_gui import BatchCreatorMainWindow
 
 class TestGUI(unittest.TestCase):
     def setUp(self):

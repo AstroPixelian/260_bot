@@ -15,7 +15,7 @@
 ```bash
 python main.py
 # 或者
-python src/batch_creator_gui.py
+python tests/manual/test_mvvm_gui.py
 ```
 
 ### 2. 切换语言
@@ -135,7 +135,7 @@ python test_i18n.py
 │   └── en-US.qm              # 英文翻译编译文件
 ├── src/
 │   ├── translation_manager.py # 翻译管理器
-│   └── batch_creator_gui.py   # 主GUI（已集成多语言）
+│   └── batch_creator_gui.py   # 主GUI (MVVM版，包含多语言支持)
 ├── test_translation_core.py   # 核心翻译测试
 └── test_i18n.py              # GUI翻译测试
 ```
