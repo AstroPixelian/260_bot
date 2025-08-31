@@ -15,12 +15,17 @@ dependencies = [
     "playwright>=1.44.0",
     "pywin32>=311; sys_platform == 'win32'",
     "faker>=37.6.0",
+    "undetected-chromedriver>=3.5.5",
+    "selenium>=4.35.0",
+    "setuptools>=80.9.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
+    "selenium>=4.35.0",
+    "undetected-chromedriver>=3.5.5",
 ]
 
 [tool.uv]

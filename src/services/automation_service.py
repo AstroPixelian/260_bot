@@ -4,26 +4,54 @@ Automation service for batch account registration
 
 import random
 import asyncio
-from typing import Callable, Optional
+import time
+from typing import Callable, Optional, Literal
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page, PlaywrightContextManager, ViewportSize
 from ..models.account import Account, AccountStatus
 from ..account_generator import AccountGenerator
 from ..translation_manager import tr
 
+# Import undetected_chromedriver and related dependencies
+try:
+    import undetected_chromedriver as uc
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.common.action_chains import ActionChains
+    from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
+    SELENIUM_AVAILABLE = True
+except ImportError:
+    SELENIUM_AVAILABLE = False
+
+
+# Type alias for automation backend
+AutomationBackend = Literal["playwright", "selenium"]
+
 
 class AutomationService:
-    """Service for automated account registration"""
+    """Service for automated account registration with multiple backend support"""
     
-    def __init__(self):
+    def __init__(self, backend: AutomationBackend = "selenium"):
         self.is_running = False
         self.is_paused = False
         self.current_account_index = 0
         self.success_rate = 0.8  # 80% success rate for simulation
         
+        # Backend selection
+        self.backend = backend
+        
+        # Validate backend availability
+        if backend == "selenium" and not SELENIUM_AVAILABLE:
+            raise ImportError("Selenium backend requested but undetected_chromedriver is not available. "
+                            "Install it with: pip install undetected-chromedriver")
+        
         # Playwright browser management
         self.playwright: Optional[PlaywrightContextManager] = None
         self.browser: Optional[Browser] = None
         self.browser_context: Optional[BrowserContext] = None
+        
+        # Selenium/undetected_chromedriver management
+        self.selenium_driver: Optional[object] = None
         
         # Callback functions for UI updates
         self.on_account_start: Optional[Callable[[Account], None]] = None
@@ -110,16 +138,20 @@ class AutomationService:
             if account.status == AccountStatus.PROCESSING:
                 account.reset_status()
         
-        # Clean up browser resources
+        # Clean up browser resources based on backend
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # If in an event loop, schedule cleanup
-                asyncio.create_task(self._cleanup_browser())
+            if self.backend == "playwright":
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # If in an event loop, schedule cleanup
+                    asyncio.create_task(self._cleanup_browser())
+                else:
+                    # If not in an event loop, run cleanup synchronously
+                    asyncio.run(self._cleanup_browser())
             else:
-                # If not in an event loop, run cleanup synchronously
-                asyncio.run(self._cleanup_browser())
-        except:
+                # For selenium backend, use synchronous cleanup
+                self._cleanup_selenium_driver()
+        except Exception:
             # If cleanup fails, continue anyway
             pass
         
@@ -158,8 +190,12 @@ class AutomationService:
         if self.on_log_message:
             self.on_log_message(tr("Processing account: %1").replace("%1", account.username))
         
-        # Simulate registration process (this would be replaced with real automation)
-        self._simulate_registration(account)
+        # Use the appropriate registration method based on backend
+        if self.backend == "selenium":
+            self._register_with_selenium(account)
+        else:
+            # For playwright or other backends, use the existing approach
+            self._simulate_registration(account)
         
         return True
     
@@ -349,6 +385,27 @@ class AutomationService:
                 self.on_log_message(tr("WARNING: %1").replace("%1", error_msg))
     
     async def register_single_account(self, account: Account) -> bool:
+        """
+        Register a single account using the configured automation backend
+        
+        Args:
+            account: Account to register
+            
+        Returns:
+            True if registration successful, False otherwise
+        """
+        if self.on_log_message:
+            self.on_log_message(tr("DEBUG: Starting single account registration for: %1").replace("%1", account.username))
+        
+        if self.backend == "selenium":
+            # For selenium backend, use synchronous registration
+            self._register_with_selenium(account)
+            return account.status == AccountStatus.SUCCESS
+        else:
+            # For playwright backend, use existing async method
+            return await self._register_single_account_playwright(account)
+    
+    async def _register_single_account_playwright(self, account: Account) -> bool:
         """
         Register a single account using Playwright automation
         
@@ -832,3 +889,559 @@ class AutomationService:
             if self.on_log_message:
                 self.on_log_message(tr("ERROR: %1").replace("%1", error_msg))
             return []
+
+    # ===== SELENIUM/UNDETECTED_CHROMEDRIVER METHODS =====
+    
+    def _initialize_selenium_driver(self) -> bool:
+        """Initialize undetected_chromedriver instance"""
+        if not SELENIUM_AVAILABLE:
+            if self.on_log_message:
+                self.on_log_message(tr("ERROR: Selenium backend not available"))
+            return False
+        
+        try:
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Starting selenium driver initialization"))
+            
+            if not self.selenium_driver:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Creating undetected_chromedriver instance"))
+                
+                # Configure Chrome options for anti-detection
+                options = uc.ChromeOptions()
+                
+                # Add anti-detection arguments similar to Playwright
+                options.add_argument('--disable-blink-features=AutomationControlled')
+                options.add_argument('--disable-web-security')
+                options.add_argument('--disable-features=VizDisplayCompositor')
+                options.add_argument('--no-first-run')
+                options.add_argument('--no-default-browser-check')
+                options.add_argument('--disable-dev-shm-usage')
+                options.add_argument('--disable-extensions')
+                options.add_argument('--disable-background-timer-throttling')
+                options.add_argument('--disable-backgrounding-occluded-windows')
+                options.add_argument('--disable-renderer-backgrounding')
+                options.add_argument('--disable-ipc-flooding-protection')
+                options.add_argument('--disable-hang-monitor')
+                options.add_argument('--disable-prompt-on-repost')
+                options.add_argument('--disable-sync')
+                options.add_argument('--force-color-profile=srgb')
+                options.add_argument('--metrics-recording-only')
+                options.add_argument('--use-mock-keychain')
+                options.add_argument('--disable-background-networking')
+                options.add_argument('--window-size=1280,720')
+                
+                # Create the undetected Chrome driver
+                self.selenium_driver = uc.Chrome(
+                    options=options,
+                    headless=False,  # Set to False for debugging
+                    use_subprocess=True,
+                    suppress_welcome=True
+                )
+                
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Undetected Chrome driver created successfully"))
+            
+            if self.on_log_message:
+                self.on_log_message(tr("Selenium driver initialized successfully"))
+            
+            return True
+        except Exception as e:
+            error_msg = f"Selenium driver initialization failed: {str(e)}"
+            if self.on_log_message:
+                self.on_log_message(tr("ERROR: %1").replace("%1", error_msg))
+            return False
+    
+    def _cleanup_selenium_driver(self):
+        """Clean up selenium driver resources"""
+        try:
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Starting selenium driver cleanup"))
+            
+            if self.selenium_driver:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Closing selenium driver"))
+                self.selenium_driver.quit()
+                self.selenium_driver = None
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Selenium driver closed"))
+            
+            if self.on_log_message:
+                self.on_log_message(tr("Selenium driver resources cleaned up"))
+        except Exception as e:
+            error_msg = f"Selenium driver cleanup error: {str(e)}"
+            if self.on_log_message:
+                self.on_log_message(tr("WARNING: %1").replace("%1", error_msg))
+    
+    def _register_with_selenium(self, account: Account):
+        """Register a single account using selenium/undetected_chromedriver"""
+        if self.on_log_message:
+            self.on_log_message(tr("DEBUG: Starting selenium registration for: %1").replace("%1", account.username))
+        
+        if not self._initialize_selenium_driver():
+            account.mark_failed("Failed to initialize selenium driver")
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Selenium driver initialization failed, aborting registration"))
+            return
+        
+        try:
+            # Mark account as processing
+            account.mark_processing(tr("Initializing browser for registration"))
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Account marked as processing"))
+                self.on_log_message(tr("Starting registration for: %1").replace("%1", account.username))
+            
+            # Step 1: Navigate to 360.cn with retry logic
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Step 1 - Navigating to 360.cn"))
+            account.mark_processing(tr("Navigating to 360.cn"))
+            
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    if self.on_log_message:
+                        self.on_log_message(tr("DEBUG: Navigation attempt %1/%2").replace("%1", str(attempt + 1)).replace("%2", str(max_retries)))
+                    
+                    self.selenium_driver.get('https://wan.360.cn/')
+                    
+                    # Wait for page to load
+                    WebDriverWait(self.selenium_driver, 60).until(
+                        lambda driver: driver.execute_script("return document.readyState") == "complete"
+                    )
+                    break
+                    
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        if self.on_log_message:
+                            self.on_log_message(tr("DEBUG: Navigation attempt %1 failed: %2, retrying...").replace("%1", str(attempt + 1)).replace("%2", str(e)))
+                        time.sleep(2)  # Wait before retry
+                        continue
+                    else:
+                        # All retries failed
+                        raise Exception(f"Failed to navigate to 360.cn after {max_retries} attempts: {str(e)}")
+            
+            if self.on_log_message:
+                self.on_log_message(tr("Navigated to 360.cn"))
+                self.on_log_message(tr("DEBUG: Current URL: %1").replace("%1", self.selenium_driver.current_url))
+            
+            # Add delay to ensure page is fully loaded
+            time.sleep(5)
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Waited 5 seconds for page to fully load and stabilize"))
+            
+            # Step 2: Click registration button
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Step 2 - Looking for registration button"))
+            account.mark_processing(tr("Opening registration form"))
+            
+            # Try multiple selectors for the registration button
+            registration_selectors = [
+                (By.XPATH, '/html/body/div/div/div[2]/div/div/div/div[2]/form/div[6]/div[2]/a[1]'),
+                (By.LINK_TEXT, '注册'),
+                (By.LINK_TEXT, '立即注册'),
+                (By.LINK_TEXT, '免费注册'),
+                (By.CSS_SELECTOR, 'a[href*="register"]'),
+            ]
+            
+            registration_clicked = False
+            for by, selector in registration_selectors:
+                try:
+                    if self.on_log_message:
+                        self.on_log_message(tr("DEBUG: Trying registration selector: %1").replace("%1", selector))
+                    
+                    elements = self.selenium_driver.find_elements(by, selector)
+                    for element in elements:
+                        if element.is_displayed():
+                            if self.on_log_message:
+                                text = element.text
+                                self.on_log_message(tr("DEBUG: Found visible registration element with text: %1").replace("%1", str(text)))
+                            
+                            element.click()
+                            registration_clicked = True
+                            
+                            if self.on_log_message:
+                                self.on_log_message(tr("DEBUG: Clicked registration button"))
+                            break
+                    
+                    if registration_clicked:
+                        break
+                        
+                except Exception as e:
+                    if self.on_log_message:
+                        self.on_log_message(tr("DEBUG: Selector %1 failed: %2").replace("%1", selector).replace("%2", str(e)))
+                    continue
+            
+            if not registration_clicked:
+                raise Exception("Could not find or click any registration button")
+            
+            if self.on_log_message:
+                self.on_log_message(tr("Clicked registration button"))
+            
+            # Wait for registration modal/form to appear
+            modal_selectors = [
+                (By.XPATH, '/html/body/div[9]/div[2]/div/div/div/form'),
+                (By.CSS_SELECTOR, '.modal form'),
+                (By.CSS_SELECTOR, '.popup form'),
+                (By.CSS_SELECTOR, '.register-form'),
+                (By.CSS_SELECTOR, 'form[action*="register"]'),
+                (By.CSS_SELECTOR, 'form input[name="username"]'),
+                (By.CSS_SELECTOR, 'form input[placeholder*="用户名"]'),
+                (By.CSS_SELECTOR, 'form input[placeholder*="账号"]')
+            ]
+            
+            modal_found = False
+            for by, selector in modal_selectors:
+                try:
+                    if self.on_log_message:
+                        self.on_log_message(tr("DEBUG: Waiting for registration form: %1").replace("%1", selector))
+                    
+                    WebDriverWait(self.selenium_driver, 5).until(
+                        EC.presence_of_element_located((by, selector))
+                    )
+                    modal_found = True
+                    
+                    if self.on_log_message:
+                        self.on_log_message(tr("Registration form appeared"))
+                    break
+                    
+                except TimeoutException as e:
+                    if self.on_log_message:
+                        self.on_log_message(tr("DEBUG: Form selector %1 failed: %2").replace("%1", selector).replace("%2", str(e)))
+                    continue
+            
+            if not modal_found:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: No registration form found, continuing anyway..."))
+            
+            # Add delay after modal appears
+            time.sleep(2)
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Waited 2 seconds for form to stabilize"))
+            
+            # Step 3: Fill username input
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Step 3 - Filling username field"))
+            account.mark_processing(tr("Filling registration form"))
+            
+            username_selectors = [
+                (By.XPATH, '/html/body/div[9]/div[2]/div/div/div/form/div[1]/div/div[1]/div/div/input'),
+                (By.NAME, 'username'),
+                (By.CSS_SELECTOR, 'input[placeholder*="用户名"]'),
+                (By.CSS_SELECTOR, 'input[placeholder*="账号"]'),
+                (By.CSS_SELECTOR, 'input[placeholder*="Username"]'),
+                (By.CSS_SELECTOR, 'form input[type="text"]:first-of-type'),
+                (By.ID, 'username'),
+                (By.CSS_SELECTOR, '.username'),
+                (By.CSS_SELECTOR, 'form input[type="text"]')
+            ]
+            
+            username_filled = False
+            for by, selector in username_selectors:
+                try:
+                    if self.on_log_message:
+                        self.on_log_message(tr("DEBUG: Trying username selector: %1").replace("%1", selector))
+                    
+                    elements = self.selenium_driver.find_elements(by, selector)
+                    for element in elements:
+                        if element.is_displayed():
+                            element.clear()
+                            element.send_keys(account.username)
+                            username_filled = True
+                            
+                            if self.on_log_message:
+                                self.on_log_message(tr("DEBUG: Successfully filled username with selector: %1").replace("%1", selector))
+                            break
+                    
+                    if username_filled:
+                        break
+                        
+                except Exception as e:
+                    if self.on_log_message:
+                        self.on_log_message(tr("DEBUG: Username selector %1 failed: %2").replace("%1", selector).replace("%2", str(e)))
+                    continue
+            
+            if not username_filled:
+                raise Exception("Could not find or fill username field")
+            
+            if self.on_log_message:
+                self.on_log_message(tr("Filled username: %1").replace("%1", account.username))
+            
+            # Step 4: Fill password input
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Step 4 - Filling password field"))
+            
+            password_selectors = [
+                (By.XPATH, '/html/body/div[9]/div[2]/div/div/div/form/div[1]/div/div[2]/div/div/input'),
+                (By.NAME, 'password'),
+                (By.CSS_SELECTOR, 'input[placeholder*="密码"]'),
+                (By.CSS_SELECTOR, 'input[placeholder*="Password"]'),
+                (By.CSS_SELECTOR, 'input[type="password"]:first-of-type'),
+                (By.ID, 'password'),
+                (By.CSS_SELECTOR, '.password'),
+                (By.CSS_SELECTOR, 'form input[type="password"]')
+            ]
+            
+            password_filled = False
+            for by, selector in password_selectors:
+                try:
+                    if self.on_log_message:
+                        self.on_log_message(tr("DEBUG: Trying password selector: %1").replace("%1", selector))
+                    
+                    elements = self.selenium_driver.find_elements(by, selector)
+                    for element in elements:
+                        if element.is_displayed():
+                            element.clear()
+                            element.send_keys(account.password)
+                            password_filled = True
+                            
+                            if self.on_log_message:
+                                self.on_log_message(tr("DEBUG: Successfully filled password with selector: %1").replace("%1", selector))
+                            break
+                    
+                    if password_filled:
+                        break
+                        
+                except Exception as e:
+                    if self.on_log_message:
+                        self.on_log_message(tr("DEBUG: Password selector %1 failed: %2").replace("%1", selector).replace("%2", str(e)))
+                    continue
+            
+            if not password_filled:
+                raise Exception("Could not find or fill password field")
+            
+            if self.on_log_message:
+                self.on_log_message(tr("Filled password"))
+            
+            # Step 5: Fill confirm password input
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Step 5 - Filling confirm password field"))
+            
+            confirm_password_selector = (By.XPATH, '/html/body/div[9]/div[2]/div/div/div/form/div[1]/div/div[3]/div/div/input')
+            
+            try:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Waiting for confirm password field"))
+                
+                element = WebDriverWait(self.selenium_driver, 5).until(
+                    EC.element_to_be_clickable(confirm_password_selector)
+                )
+                
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Confirm password field found, filling"))
+                
+                element.clear()
+                element.send_keys(account.password)
+                
+                if self.on_log_message:
+                    self.on_log_message(tr("Filled confirm password"))
+                
+            except Exception as e:
+                error_msg = f"Failed to fill confirm password: {str(e)}"
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Exception in step 5: %1").replace("%1", error_msg))
+                raise Exception(error_msg)
+            
+            # Step 6: Check registration terms agreement
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Step 6 - Checking terms agreement"))
+            
+            terms_checkbox_selector = (By.XPATH, '/html/body/div[9]/div[2]/div/div/div/form/div[2]/label/input')
+            
+            try:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Waiting for terms checkbox"))
+                
+                element = WebDriverWait(self.selenium_driver, 5).until(
+                    EC.element_to_be_clickable(terms_checkbox_selector)
+                )
+                
+                if not element.is_selected():
+                    if self.on_log_message:
+                        self.on_log_message(tr("DEBUG: Terms checkbox found, checking"))
+                    element.click()
+                
+                if self.on_log_message:
+                    self.on_log_message(tr("Checked terms agreement"))
+                
+            except Exception as e:
+                error_msg = f"Failed to check terms agreement: {str(e)}"
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Exception in step 6: %1").replace("%1", error_msg))
+                raise Exception(error_msg)
+            
+            # Step 7: Click confirm registration button
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Step 7 - Clicking registration confirm button"))
+            account.mark_processing(tr("Submitting registration"))
+            
+            confirm_btn_selector = (By.XPATH, '/html/body/div[9]/div[2]/div/div/div/form/div[3]/input')
+            
+            try:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Waiting for confirm button"))
+                
+                element = WebDriverWait(self.selenium_driver, 5).until(
+                    EC.element_to_be_clickable(confirm_btn_selector)
+                )
+                
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Confirm button found, clicking"))
+                
+                element.click()
+                
+                if self.on_log_message:
+                    self.on_log_message(tr("Clicked registration confirm button"))
+                
+                # Add delay after clicking submit
+                time.sleep(3)
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Waited 3 seconds after clicking submit"))
+                
+            except Exception as e:
+                error_msg = f"Failed to click registration button: {str(e)}"
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Exception in step 7: %1").replace("%1", error_msg))
+                raise Exception(error_msg)
+            
+            # Step 8: Wait and verify success by checking logout link
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Step 8 - Verifying registration success"))
+            account.mark_processing(tr("Verifying registration success"))
+            
+            logout_link_selector = (By.XPATH, '/html/body/div[1]/div/span[2]/a[2]')
+            
+            try:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Waiting for logout link"))
+                
+                # Wait for registration processing (up to 30 seconds)
+                element = WebDriverWait(self.selenium_driver, 30).until(
+                    EC.presence_of_element_located(logout_link_selector)
+                )
+                
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Logout link found, checking text content"))
+                
+                # Check if logout link contains [退出] text
+                logout_text = element.text
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Logout link text: %1").replace("%1", str(logout_text)))
+                
+                if logout_text and '[退出]' in logout_text:
+                    # Registration successful
+                    success_note = tr("Account registered successfully and automatically logged in")
+                    account.mark_success(success_note)
+                    if self.on_log_message:
+                        self.on_log_message(tr("SUCCESS: %1 registered and logged in").replace("%1", account.username))
+                    
+                    # Call the completion callback
+                    if self.on_account_complete:
+                        self.on_account_complete(account)
+                    
+                    return
+                else:
+                    raise Exception(f"Logout link found but doesn't contain [退出]: {logout_text}")
+                    
+            except Exception as e:
+                # Registration might have failed or requires verification
+                error_msg = f"Registration verification failed: {str(e)}"
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Exception in step 8: %1").replace("%1", error_msg))
+                account.mark_failed(error_msg)
+                if self.on_log_message:
+                    self.on_log_message(tr("FAILED: %1 - %2").replace("%1", account.username).replace("%2", error_msg))
+                
+                # Call the completion callback for failed registration
+                if self.on_account_complete:
+                    self.on_account_complete(account)
+                
+                return
+            
+        except Exception as e:
+            error_msg = f"Registration failed: {str(e)}"
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: General exception in _register_with_selenium: %1").replace("%1", error_msg))
+            account.mark_failed(error_msg)
+            if self.on_log_message:
+                self.on_log_message(tr("FAILED: %1 - %2").replace("%1", account.username).replace("%2", error_msg))
+            
+            # Call the completion callback for failed registration
+            if self.on_account_complete:
+                self.on_account_complete(account)
+    
+    def register_single_account_selenium(self, account: Account) -> bool:
+        """
+        Register a single account using undetected_chromedriver
+        
+        Args:
+            account: Account to register
+            
+        Returns:
+            True if registration successful, False otherwise
+        """
+        if self.backend != "selenium":
+            raise ValueError("This method is only available when using selenium backend")
+        
+        if self.on_log_message:
+            self.on_log_message(tr("DEBUG: Starting single account selenium registration for: %1").replace("%1", account.username))
+        
+        # Use the internal selenium registration method
+        self._register_with_selenium(account)
+        
+        # Return success based on account status
+        return account.status == AccountStatus.SUCCESS
+    
+    # ===== UTILITY METHODS =====
+    
+    def get_backend(self) -> AutomationBackend:
+        """Get the current automation backend"""
+        return self.backend
+    
+    def set_backend(self, backend: AutomationBackend):
+        """
+        Set the automation backend
+        
+        Args:
+            backend: Backend to use ('playwright' or 'selenium')
+            
+        Raises:
+            ImportError: If selenium backend is requested but not available
+            ValueError: If trying to switch while automation is running
+        """
+        if self.is_running:
+            raise ValueError("Cannot change backend while automation is running")
+        
+        if backend == "selenium" and not SELENIUM_AVAILABLE:
+            raise ImportError("Selenium backend requested but undetected_chromedriver is not available. "
+                            "Install it with: pip install undetected-chromedriver")
+        
+        # Clean up current backend resources
+        if self.backend != backend:
+            try:
+                if self.backend == "playwright":
+                    if self.browser_context or self.browser or self.playwright:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            asyncio.create_task(self._cleanup_browser())
+                        else:
+                            asyncio.run(self._cleanup_browser())
+                else:
+                    self._cleanup_selenium_driver()
+            except Exception:
+                pass
+        
+        self.backend = backend
+        
+        if self.on_log_message:
+            self.on_log_message(tr("Backend switched to: %1").replace("%1", backend))
+    
+    def is_selenium_available(self) -> bool:
+        """Check if selenium/undetected_chromedriver is available"""
+        return SELENIUM_AVAILABLE
+    
+    def get_available_backends(self) -> list[AutomationBackend]:
+        """Get list of available backends"""
+        backends = ["playwright"]
+        if SELENIUM_AVAILABLE:
+            backends.append("selenium")
+        return backends
