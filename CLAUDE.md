@@ -8,6 +8,12 @@ This is a **360 Account Batch Creator** desktop application built with **PySide6
 
 ## Development Commands
 
+### Project Configuration
+```bash
+# Core project configuration file location
+.bmad-core/core-config.yaml
+```
+
 ### Environment Setup
 ```bash
 # Initialize development environment
