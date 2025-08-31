@@ -2,18 +2,14 @@
 # -*- coding: utf-8 -*-
 import random
 import string
-import pandas as pd
-import os
 from pathlib import Path
 from faker import Faker
-from src.utils.config import load_config
-from src.utils.logger import setup_logger
+
 
 class AccountGenerator:
-    def __init__(self, config_path="config/config.yaml"):
+    def __init__(self, config=None):
         """Initialize generator with configuration."""
-        self.config = load_config(config_path)
-        self.logger = setup_logger("AccountGenerator")
+        self.config = config or {}
         self.fake = Faker('en_US')  # Initialize Faker with English locale
         
         self.output_dir = Path("output")
@@ -115,29 +111,31 @@ class AccountGenerator:
             password = password[:-1] + random.choice(self.config.get("account_generator", {}).get("password_special_chars", "!@#$%^&*"))
         return password
 
-    def generate_accounts(self, num_accounts)->list[dict]:
+    def generate_accounts(self, num_accounts) -> list[dict]:
         """Generate specified number of accounts and save to CSV."""
         try:
             accounts = []
-            self.logger.info(f"Generating {num_accounts} accounts...")
+            print(f"Generating {num_accounts} accounts...")
             for _ in range(num_accounts):
                 account = {
                     "username": self.generate_username(),
                     "password": self.generate_password()
                 }
                 accounts.append(account)
-            self.logger.info(f"Generated {num_accounts} accounts")
+            print(f"Generated {num_accounts} accounts")
+            return accounts
         except Exception as e:
-            self.logger.error(f"Error generating accounts: {str(e)}")
+            print(f"Error generating accounts: {str(e)}")
             raise
+    
     def save_to_csv(self, accounts):
-
+        """Save accounts to CSV file"""
         # Save to file using custom separator to avoid comma conflicts
         with open(self.output_file, 'w', encoding='utf-8') as f:
             f.write("username,password\n")
             for account in accounts:
                 f.write(f"{account['username']},{account['password']}\n")
-        self.logger.info(f"Generated accounts are saved to {self.output_file}")
+        print(f"Generated accounts are saved to {self.output_file}")
         return accounts
 
 def main():
