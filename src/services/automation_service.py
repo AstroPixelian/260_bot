@@ -5,7 +5,7 @@ Automation service for batch account registration
 import random
 import asyncio
 from typing import Callable, Optional
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page, PlaywrightContextManager
+from playwright.async_api import async_playwright, Browser, BrowserContext, Page, PlaywrightContextManager, ViewportSize
 from ..models.account import Account, AccountStatus
 from ..account_generator import AccountGenerator
 from ..translation_manager import tr
@@ -249,20 +249,57 @@ class AutomationService:
     async def _initialize_browser(self) -> bool:
         """Initialize Playwright browser and context"""
         try:
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Starting browser initialization"))
+            
             if not self.playwright:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Starting Playwright instance"))
                 self.playwright = await async_playwright().start()
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Playwright instance started successfully"))
             
             if not self.browser:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Launching Chromium browser"))
                 self.browser = await self.playwright.chromium.launch(
-                    headless=True,  # Set to False for debugging
-                    args=['--disable-blink-features=AutomationControlled']
+                    headless=False,  # Set to False for debugging
+                    args=[
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-web-security',
+                        '--disable-features=VizDisplayCompositor',
+                        '--no-first-run',
+                        '--no-default-browser-check',
+                        '--disable-dev-shm-usage',
+                        '--disable-extensions',
+                        '--disable-background-timer-throttling',
+                        '--disable-backgrounding-occluded-windows',
+                        '--disable-renderer-backgrounding',
+                        '--no-sandbox',
+                        '--disable-ipc-flooding-protection',
+                        '--disable-hang-monitor',
+                        '--disable-prompt-on-repost',
+                        '--disable-sync',
+                        '--force-color-profile=srgb',
+                        '--metrics-recording-only',
+                        '--use-mock-keychain',
+                        '--disable-background-networking'
+                    ],
+                    slow_mo=200,  # Increase delay between actions for stability
+                    timeout=90000  # 90 second timeout for browser launch
                 )
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Chromium browser launched successfully"))
             
             if not self.browser_context:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Creating browser context"))
                 self.browser_context = await self.browser.new_context(
-                    viewport={'width': 1280, 'height': 720},
+                    viewport=ViewportSize({'width': 1280, 'height': 720}),
                     user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 )
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Browser context created successfully"))
             
             if self.on_log_message:
                 self.on_log_message(tr("Browser initialized successfully"))
@@ -277,17 +314,32 @@ class AutomationService:
     async def _cleanup_browser(self):
         """Clean up Playwright browser resources"""
         try:
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Starting browser cleanup"))
+            
             if self.browser_context:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Closing browser context"))
                 await self.browser_context.close()
                 self.browser_context = None
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Browser context closed"))
             
             if self.browser:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Closing browser"))
                 await self.browser.close()
                 self.browser = None
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Browser closed"))
             
             if self.playwright:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Stopping Playwright"))
                 await self.playwright.stop()
                 self.playwright = None
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Playwright stopped"))
             
             if self.on_log_message:
                 self.on_log_message(tr("Browser resources cleaned up"))
@@ -306,8 +358,13 @@ class AutomationService:
         Returns:
             True if registration successful, False otherwise
         """
+        if self.on_log_message:
+            self.on_log_message(tr("DEBUG: Starting single account registration for: %1").replace("%1", account.username))
+        
         if not await self._initialize_browser():
             account.mark_failed("Failed to initialize browser")
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Browser initialization failed, aborting registration"))
             return False
         
         page: Optional[Page] = None
@@ -315,119 +372,374 @@ class AutomationService:
         try:
             # Mark account as processing
             account.mark_processing(tr("Initializing browser for registration"))
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Account marked as processing"))
             
             # Create new page
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Creating new browser page"))
             page = await self.browser_context.new_page()
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: New browser page created successfully"))
             
             if self.on_log_message:
                 self.on_log_message(tr("Starting registration for: %1").replace("%1", account.username))
             
-            # Step 1: Navigate to 360.cn
+            # Step 1: Navigate to 360.cn with retry logic
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Step 1 - Navigating to 360.cn"))
             account.mark_processing(tr("Navigating to 360.cn"))
-            await page.goto('https://wan.360.cn/', wait_until='domcontentloaded', timeout=30000)
+            
+            # Try navigation with multiple attempts and different wait strategies
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    if self.on_log_message:
+                        self.on_log_message(tr("DEBUG: Navigation attempt %1/%2").replace("%1", str(attempt + 1)).replace("%2", str(max_retries)))
+                    
+                    # Use longer timeout and different wait strategy
+                    await page.goto('https://wan.360.cn/', 
+                                  wait_until='networkidle', 
+                                  timeout=60000)  # 60 second timeout
+                    break
+                    
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        if self.on_log_message:
+                            self.on_log_message(tr("DEBUG: Navigation attempt %1 failed: %2, retrying...").replace("%1", str(attempt + 1)).replace("%2", str(e)))
+                        await asyncio.sleep(2)  # Wait before retry
+                        continue
+                    else:
+                        # All retries failed
+                        raise Exception(f"Failed to navigate to 360.cn after {max_retries} attempts: {str(e)}")
             
             if self.on_log_message:
                 self.on_log_message(tr("Navigated to 360.cn"))
+                self.on_log_message(tr("DEBUG: Current URL: %1").replace("%1", page.url))
+            
+            # Add a longer delay to ensure page is fully loaded and allow manual inspection
+            await asyncio.sleep(5)
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: Waited 5 seconds for page to fully load and stabilize"))
             
             # Step 2: Click registration button
             try:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Step 2 - Looking for registration button"))
                 account.mark_processing(tr("Opening registration form"))
-                registration_btn_selector = '/html/body/div/div/div[2]/div/div/div/div[2]/form/div[6]/div[2]/a[1]'
-                await page.wait_for_selector(registration_btn_selector, timeout=10000)
-                await page.click(registration_btn_selector)
+                
+                # Try multiple selectors for the registration button
+                registration_selectors = [
+                    'text="注册"',  # Found by inspector
+                    'text="立即注册"',
+                    'text="免费注册"',
+                    'a[href*="register"]',
+                    'xpath=/html/body/div/div/div[2]/div/div/div/div[2]/form/div[6]/div[2]/a[1]'
+                ]
+                
+                registration_clicked = False
+                for selector in registration_selectors:
+                    try:
+                        if self.on_log_message:
+                            self.on_log_message(tr("DEBUG: Trying registration selector: %1").replace("%1", selector))
+                        
+                        # Check if element exists and is visible
+                        elements = await page.locator(selector).all()
+                        if elements:
+                            for element in elements:
+                                if await element.is_visible():
+                                    if self.on_log_message:
+                                        text = await element.text_content()
+                                        self.on_log_message(tr("DEBUG: Found visible registration element with text: %1").replace("%1", str(text)))
+                                    
+                                    await element.click()
+                                    registration_clicked = True
+                                    
+                                    if self.on_log_message:
+                                        self.on_log_message(tr("DEBUG: Clicked registration button"))
+                                    
+                                    break
+                        
+                        if registration_clicked:
+                            break
+                            
+                    except Exception as e:
+                        if self.on_log_message:
+                            self.on_log_message(tr("DEBUG: Selector %1 failed: %2").replace("%1", selector).replace("%2", str(e)))
+                        continue
+                
+                if not registration_clicked:
+                    raise Exception("Could not find or click any registration button")
                 
                 if self.on_log_message:
                     self.on_log_message(tr("Clicked registration button"))
                 
-                # Wait for registration modal to appear
-                await page.wait_for_selector('/html/body/div[9]/div[2]/div/div/div/form', timeout=10000)
+                # Wait for registration modal/form to appear with multiple possible selectors
+                modal_selectors = [
+                    'xpath=/html/body/div[9]/div[2]/div/div/div/form',
+                    '.modal form',
+                    '.popup form',
+                    '.register-form',
+                    'form[action*="register"]',
+                    'form input[name="username"]',
+                    'form input[placeholder*="用户名"]',
+                    'form input[placeholder*="账号"]'
+                ]
                 
+                modal_found = False
+                for selector in modal_selectors:
+                    try:
+                        if self.on_log_message:
+                            self.on_log_message(tr("DEBUG: Waiting for registration form: %1").replace("%1", selector))
+                        
+                        await page.wait_for_selector(selector, timeout=5000)
+                        modal_found = True
+                        
+                        if self.on_log_message:
+                            self.on_log_message(tr("Registration form appeared"))
+                        break
+                        
+                    except Exception as e:
+                        if self.on_log_message:
+                            self.on_log_message(tr("DEBUG: Form selector %1 failed: %2").replace("%1", selector).replace("%2", str(e)))
+                        continue
+                
+                if not modal_found:
+                    if self.on_log_message:
+                        self.on_log_message(tr("DEBUG: No registration form found, continuing anyway..."))
+                
+                # Add delay after modal appears
+                await asyncio.sleep(2)
                 if self.on_log_message:
-                    self.on_log_message(tr("Registration modal appeared"))
+                    self.on_log_message(tr("DEBUG: Waited 2 seconds for form to stabilize"))
                 
             except Exception as e:
-                raise Exception(f"Failed to open registration modal: {str(e)}")
+                error_msg = f"Failed to open registration modal: {str(e)}"
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Exception in step 2: %1").replace("%1", error_msg))
+                raise Exception(error_msg)
             
             # Step 3: Fill username input
             try:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Step 3 - Filling username field"))
                 account.mark_processing(tr("Filling registration form"))
-                username_selector = '/html/body/div[9]/div[2]/div/div/div/form/div[1]/div/div[1]/div/div/input'
-                await page.wait_for_selector(username_selector, timeout=5000)
-                await page.fill(username_selector, account.username)
+                
+                # Try multiple selectors for username field
+                username_selectors = [
+                    'xpath=/html/body/div[9]/div[2]/div/div/div/form/div[1]/div/div[1]/div/div/input',
+                    'input[name="username"]',
+                    'input[placeholder*="用户名"]',
+                    'input[placeholder*="账号"]',
+                    'input[placeholder*="Username"]',
+                    'form input[type="text"]:first-of-type',
+                    '#username',
+                    '.username',
+                    'form input[type="text"]'
+                ]
+                
+                username_filled = False
+                for selector in username_selectors:
+                    try:
+                        if self.on_log_message:
+                            self.on_log_message(tr("DEBUG: Trying username selector: %1").replace("%1", selector))
+                        
+                        elements = await page.locator(selector).all()
+                        if elements:
+                            for element in elements:
+                                if await element.is_visible():
+                                    await element.fill(account.username)
+                                    username_filled = True
+                                    
+                                    if self.on_log_message:
+                                        self.on_log_message(tr("DEBUG: Successfully filled username with selector: %1").replace("%1", selector))
+                                    break
+                        
+                        if username_filled:
+                            break
+                            
+                    except Exception as e:
+                        if self.on_log_message:
+                            self.on_log_message(tr("DEBUG: Username selector %1 failed: %2").replace("%1", selector).replace("%2", str(e)))
+                        continue
+                
+                if not username_filled:
+                    raise Exception("Could not find or fill username field")
                 
                 if self.on_log_message:
                     self.on_log_message(tr("Filled username: %1").replace("%1", account.username))
                 
             except Exception as e:
-                raise Exception(f"Failed to fill username: {str(e)}")
+                error_msg = f"Failed to fill username: {str(e)}"
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Exception in step 3: %1").replace("%1", error_msg))
+                raise Exception(error_msg)
             
             # Step 4: Fill password input
             try:
-                password_selector = '/html/body/div[9]/div[2]/div/div/div/form/div[1]/div/div[2]/div/div/input'
-                await page.wait_for_selector(password_selector, timeout=5000)
-                await page.fill(password_selector, account.password)
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Step 4 - Filling password field"))
+                
+                # Try multiple selectors for password field
+                password_selectors = [
+                    'xpath=/html/body/div[9]/div[2]/div/div/div/form/div[1]/div/div[2]/div/div/input',
+                    'input[name="password"]',
+                    'input[placeholder*="密码"]',
+                    'input[placeholder*="Password"]',
+                    'input[type="password"]:first-of-type',
+                    '#password',
+                    '.password',
+                    'form input[type="password"]'
+                ]
+                
+                password_filled = False
+                for selector in password_selectors:
+                    try:
+                        if self.on_log_message:
+                            self.on_log_message(tr("DEBUG: Trying password selector: %1").replace("%1", selector))
+                        
+                        elements = await page.locator(selector).all()
+                        if elements:
+                            for element in elements:
+                                if await element.is_visible():
+                                    await element.fill(account.password)
+                                    password_filled = True
+                                    
+                                    if self.on_log_message:
+                                        self.on_log_message(tr("DEBUG: Successfully filled password with selector: %1").replace("%1", selector))
+                                    break
+                        
+                        if password_filled:
+                            break
+                            
+                    except Exception as e:
+                        if self.on_log_message:
+                            self.on_log_message(tr("DEBUG: Password selector %1 failed: %2").replace("%1", selector).replace("%2", str(e)))
+                        continue
+                
+                if not password_filled:
+                    raise Exception("Could not find or fill password field")
                 
                 if self.on_log_message:
                     self.on_log_message(tr("Filled password"))
                 
             except Exception as e:
-                raise Exception(f"Failed to fill password: {str(e)}")
+                error_msg = f"Failed to fill password: {str(e)}"
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Exception in step 4: %1").replace("%1", error_msg))
+                raise Exception(error_msg)
             
             # Step 5: Fill confirm password input
             try:
-                confirm_password_selector = '/html/body/div[9]/div[2]/div/div/div/form/div[1]/div/div[3]/div/div/input'
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Step 5 - Filling confirm password field"))
+                confirm_password_selector = 'xpath=/html/body/div[9]/div[2]/div/div/div/form/div[1]/div/div[3]/div/div/input'
+                
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Waiting for confirm password field: %1").replace("%1", confirm_password_selector))
+                
                 await page.wait_for_selector(confirm_password_selector, timeout=5000)
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Confirm password field found, filling"))
+                
                 await page.fill(confirm_password_selector, account.password)
                 
                 if self.on_log_message:
                     self.on_log_message(tr("Filled confirm password"))
                 
             except Exception as e:
-                raise Exception(f"Failed to fill confirm password: {str(e)}")
+                error_msg = f"Failed to fill confirm password: {str(e)}"
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Exception in step 5: %1").replace("%1", error_msg))
+                raise Exception(error_msg)
             
             # Step 6: Check registration terms agreement
             try:
-                terms_checkbox_selector = '/html/body/div[9]/div[2]/div/div/div/form/div[2]/label/input'
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Step 6 - Checking terms agreement"))
+                terms_checkbox_selector = 'xpath=/html/body/div[9]/div[2]/div/div/div/form/div[2]/label/input'
+                
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Waiting for terms checkbox: %1").replace("%1", terms_checkbox_selector))
+                
                 await page.wait_for_selector(terms_checkbox_selector, timeout=5000)
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Terms checkbox found, checking"))
+                
                 await page.check(terms_checkbox_selector)
                 
                 if self.on_log_message:
                     self.on_log_message(tr("Checked terms agreement"))
                 
             except Exception as e:
-                raise Exception(f"Failed to check terms agreement: {str(e)}")
+                error_msg = f"Failed to check terms agreement: {str(e)}"
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Exception in step 6: %1").replace("%1", error_msg))
+                raise Exception(error_msg)
             
             # Step 7: Click confirm registration button
             try:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Step 7 - Clicking registration confirm button"))
                 account.mark_processing(tr("Submitting registration"))
-                confirm_btn_selector = '/html/body/div[9]/div[2]/div/div/div/form/div[3]/input'
+                confirm_btn_selector = 'xpath=/html/body/div[9]/div[2]/div/div/div/form/div[3]/input'
+                
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Waiting for confirm button: %1").replace("%1", confirm_btn_selector))
+                
                 await page.wait_for_selector(confirm_btn_selector, timeout=5000)
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Confirm button found, clicking"))
+                
                 await page.click(confirm_btn_selector)
                 
                 if self.on_log_message:
                     self.on_log_message(tr("Clicked registration confirm button"))
                 
+                # Add delay after clicking submit
+                await asyncio.sleep(3)
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Waited 3 seconds after clicking submit"))
+                
             except Exception as e:
-                raise Exception(f"Failed to click registration button: {str(e)}")
+                error_msg = f"Failed to click registration button: {str(e)}"
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Exception in step 7: %1").replace("%1", error_msg))
+                raise Exception(error_msg)
             
             # Step 8: Wait and verify success by checking logout link
             try:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Step 8 - Verifying registration success"))
                 account.mark_processing(tr("Verifying registration success"))
-                logout_link_selector = '/html/body/div[1]/div/span[2]/a[2]'
+                logout_link_selector = 'xpath=/html/body/div[1]/div/span[2]/a[2]'
+                
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Waiting for logout link: %1").replace("%1", logout_link_selector))
                 
                 # Wait for registration processing (up to 30 seconds)
                 await page.wait_for_selector(logout_link_selector, timeout=30000)
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Logout link found, checking text content"))
                 
                 # Check if logout link contains [退出] text
                 logout_element = await page.query_selector(logout_link_selector)
                 if logout_element:
                     logout_text = await logout_element.text_content()
+                    if self.on_log_message:
+                        self.on_log_message(tr("DEBUG: Logout link text: %1").replace("%1", str(logout_text)))
+                    
                     if logout_text and '[退出]' in logout_text:
                         # Registration successful
                         success_note = tr("Account registered successfully and automatically logged in")
                         account.mark_success(success_note)
                         if self.on_log_message:
                             self.on_log_message(tr("SUCCESS: %1 registered and logged in").replace("%1", account.username))
+                        
+                        # Call the completion callback
+                        if self.on_account_complete:
+                            self.on_account_complete(account)
+                        
                         return True
                     else:
                         raise Exception(f"Logout link found but doesn't contain [退出]: {logout_text}")
@@ -437,24 +749,43 @@ class AutomationService:
             except Exception as e:
                 # Registration might have failed or requires verification
                 error_msg = f"Registration verification failed: {str(e)}"
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Exception in step 8: %1").replace("%1", error_msg))
                 account.mark_failed(error_msg)
                 if self.on_log_message:
                     self.on_log_message(tr("FAILED: %1 - %2").replace("%1", account.username).replace("%2", error_msg))
+                
+                # Call the completion callback for failed registration
+                if self.on_account_complete:
+                    self.on_account_complete(account)
+                
                 return False
             
         except Exception as e:
             error_msg = f"Registration failed: {str(e)}"
+            if self.on_log_message:
+                self.on_log_message(tr("DEBUG: General exception in register_single_account: %1").replace("%1", error_msg))
             account.mark_failed(error_msg)
             if self.on_log_message:
                 self.on_log_message(tr("FAILED: %1 - %2").replace("%1", account.username).replace("%2", error_msg))
+            
+            # Call the completion callback for failed registration
+            if self.on_account_complete:
+                self.on_account_complete(account)
+            
             return False
         finally:
             # Close the page
             if page:
                 try:
+                    if self.on_log_message:
+                        self.on_log_message(tr("DEBUG: Closing browser page"))
                     await page.close()
-                except:
-                    pass
+                    if self.on_log_message:
+                        self.on_log_message(tr("DEBUG: Browser page closed successfully"))
+                except Exception as e:
+                    if self.on_log_message:
+                        self.on_log_message(tr("DEBUG: Error closing page: %1").replace("%1", str(e)))
     
     def generate_test_accounts(self, count: int = 3) -> list[Account]:
         """
