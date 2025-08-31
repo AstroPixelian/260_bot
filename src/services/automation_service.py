@@ -764,58 +764,164 @@ class AutomationService:
                     self.on_log_message(tr("DEBUG: Exception in step 7: %1").replace("%1", error_msg))
                 raise Exception(error_msg)
             
-            # Step 8: Wait and verify success by checking logout link
+            # Step 8: Wait and verify registration result
             try:
                 if self.on_log_message:
-                    self.on_log_message(tr("DEBUG: Step 8 - Verifying registration success"))
-                account.mark_processing(tr("Verifying registration success"))
-                logout_link_selector = 'xpath=/html/body/div[1]/div/span[2]/a[2]'
+                    self.on_log_message(tr("DEBUG: Step 8 - Verifying registration result"))
+                account.mark_processing(tr("Verifying registration result"))
                 
-                if self.on_log_message:
-                    self.on_log_message(tr("DEBUG: Waiting for logout link: %1").replace("%1", logout_link_selector))
+                # Wait a moment for any response to appear
+                await asyncio.sleep(2)
                 
-                # Wait for registration processing (up to 30 seconds)
-                await page.wait_for_selector(logout_link_selector, timeout=30000)
-                if self.on_log_message:
-                    self.on_log_message(tr("DEBUG: Logout link found, checking text content"))
+                # Check for various possible outcomes
+                result_detected = False
                 
-                # Check if logout link contains [退出] text
-                logout_element = await page.query_selector(logout_link_selector)
-                if logout_element:
-                    logout_text = await logout_element.text_content()
-                    if self.on_log_message:
-                        self.on_log_message(tr("DEBUG: Logout link text: %1").replace("%1", str(logout_text)))
-                    
-                    if logout_text and '[退出]' in logout_text:
-                        # Registration successful
-                        success_note = tr("Account registered successfully and automatically logged in")
-                        account.mark_success(success_note)
+                # 1. Check for "already registered" messages
+                already_registered_messages = [
+                    "该账号已经注册",
+                    "账号已存在", 
+                    "用户名已存在",
+                    "已注册",
+                    "立即登录"
+                ]
+                
+                for message in already_registered_messages:
+                    try:
+                        elements = await page.locator(f"text*={message}").all()
+                        if elements:
+                            for element in elements:
+                                if await element.is_visible():
+                                    # Account already exists
+                                    error_note = tr("Account already registered: %1").replace("%1", message)
+                                    account.mark_failed(error_note)
+                                    if self.on_log_message:
+                                        self.on_log_message(tr("FAILED: %1 - Account already exists").replace("%1", account.username))
+                                    result_detected = True
+                                    break
+                        if result_detected:
+                            break
+                    except Exception:
+                        continue
+                
+                if result_detected:
+                    return False
+                
+                # 2. Check for successful login (logout button visible)
+                logout_selectors = [
+                    'xpath=/html/body/div[1]/div/span[2]/a[2]',
+                    'text="[退出]"',
+                    'text="退出"',
+                    '.wan-logout-btn',
+                    '[data-bk="wan-public-dropout"]'
+                ]
+                
+                for selector in logout_selectors:
+                    try:
                         if self.on_log_message:
-                            self.on_log_message(tr("SUCCESS: %1 registered and logged in").replace("%1", account.username))
+                            self.on_log_message(tr("DEBUG: Checking logout selector: %1").replace("%1", selector))
                         
-                        # Call the completion callback
-                        if self.on_account_complete:
-                            self.on_account_complete(account)
+                        await page.wait_for_selector(selector, timeout=5000)
+                        logout_element = await page.query_selector(selector)
+                        if logout_element:
+                            # Check if element is visible or just present
+                            is_visible = await logout_element.is_visible()
+                            logout_text = await logout_element.text_content()
+                            
+                            if self.on_log_message:
+                                self.on_log_message(tr("DEBUG: Logout element found - Visible: %1, Text: %2").replace("%1", str(is_visible)).replace("%2", str(logout_text)))
+                            
+                            if is_visible or (logout_text and ('退出' in logout_text)):
+                                # Registration successful
+                                success_note = tr("Account registered successfully and automatically logged in")
+                                account.mark_success(success_note)
+                                if self.on_log_message:
+                                    self.on_log_message(tr("SUCCESS: %1 registered and logged in").replace("%1", account.username))
+                                result_detected = True
+                                break
+                    except Exception as e:
+                        if self.on_log_message:
+                            self.on_log_message(tr("DEBUG: Logout selector %1 failed: %2").replace("%1", selector).replace("%2", str(e)))
+                        continue
+                
+                if result_detected:
+                    return True
+                
+                # 3. Check for error messages
+                error_messages = [
+                    "注册失败",
+                    "用户名格式不正确",
+                    "密码格式不正确", 
+                    "验证码错误",
+                    "网络错误",
+                    "系统繁忙"
+                ]
+                
+                for message in error_messages:
+                    try:
+                        elements = await page.locator(f"text*={message}").all()
+                        if elements:
+                            for element in elements:
+                                if await element.is_visible():
+                                    error_note = tr("Registration failed: %1").replace("%1", message)
+                                    account.mark_failed(error_note)
+                                    if self.on_log_message:
+                                        self.on_log_message(tr("FAILED: %1 - %2").replace("%1", account.username).replace("%2", error_note))
+                                    result_detected = True
+                                    break
+                        if result_detected:
+                            break
+                    except Exception:
+                        continue
+                
+                if result_detected:
+                    return False
+                
+                # 4. If no clear result, wait longer and check again
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: No immediate result detected, waiting longer..."))
+                
+                await asyncio.sleep(5)
+                
+                # Final check for logout button with longer wait
+                try:
+                    logout_link_selector = 'xpath=/html/body/div[1]/div/span[2]/a[2]'
+                    await page.wait_for_selector(logout_link_selector, timeout=20000)
+                    logout_element = await page.query_selector(logout_link_selector)
+                    if logout_element:
+                        logout_text = await logout_element.text_content()
+                        is_visible = await logout_element.is_visible()
                         
-                        return True
+                        if self.on_log_message:
+                            self.on_log_message(tr("DEBUG: Final check - Logout text: %1, Visible: %2").replace("%1", str(logout_text)).replace("%2", str(is_visible)))
+                        
+                        if logout_text and '[退出]' in logout_text:
+                            # Registration successful even if not immediately visible
+                            success_note = tr("Account registered successfully (logout button present)")
+                            account.mark_success(success_note)
+                            if self.on_log_message:
+                                self.on_log_message(tr("SUCCESS: %1 registered (logout button detected)").replace("%1", account.username))
+                            return True
+                        else:
+                            raise Exception(f"Logout link found but doesn't contain [退出]: {logout_text}")
                     else:
-                        raise Exception(f"Logout link found but doesn't contain [退出]: {logout_text}")
-                else:
-                    raise Exception("Logout link element not found after registration")
+                        raise Exception("Logout link element not found after registration")
+                        
+                except Exception as e:
+                    # Could not verify success
+                    error_msg = f"Registration result unclear: {str(e)}"
+                    account.mark_failed(error_msg)
+                    if self.on_log_message:
+                        self.on_log_message(tr("FAILED: %1 - %2").replace("%1", account.username).replace("%2", error_msg))
+                    return False
                     
             except Exception as e:
-                # Registration might have failed or requires verification
+                # General verification error
                 error_msg = f"Registration verification failed: {str(e)}"
                 if self.on_log_message:
                     self.on_log_message(tr("DEBUG: Exception in step 8: %1").replace("%1", error_msg))
                 account.mark_failed(error_msg)
                 if self.on_log_message:
                     self.on_log_message(tr("FAILED: %1 - %2").replace("%1", account.username).replace("%2", error_msg))
-                
-                # Call the completion callback for failed registration
-                if self.on_account_complete:
-                    self.on_account_complete(account)
-                
                 return False
             
         except Exception as e:
