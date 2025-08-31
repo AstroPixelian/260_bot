@@ -142,12 +142,30 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="Generate random accounts and save to CSV.")
     parser.add_argument("--num", type=int, default=10, help="Number of accounts to generate")
+    parser.add_argument("--save-csv", action="store_true", help="Save accounts to CSV file (default: False)")
+    parser.add_argument("--output", type=str, default="accounts.csv", help="Output CSV filename (default: accounts.csv)")
     args = parser.parse_args()
 
     generator = AccountGenerator()
+    # Set custom output file if specified
+    if args.output != "accounts.csv":
+        generator.output_file = generator.output_dir / args.output
+    
     accounts = generator.generate_accounts(args.num)
-    generator.save_to_csv(accounts)
-    print(f"Generated {len(accounts)} accounts. Saved to {generator.output_file}")
+    
+    # Always display accounts in console
+    print(f"\nGenerated {len(accounts)} accounts:")
+    print("-" * 50)
+    for i, account in enumerate(accounts, 1):
+        print(f"{i:2d}. Username: {account['username']}, Password: {account['password']}")
+    print("-" * 50)
+    
+    # Save to CSV if requested
+    if args.save_csv:
+        generator.save_to_csv(accounts)
+        print(f"Accounts also saved to {generator.output_file}")
+    else:
+        print("Accounts not saved to file (use --save-csv to save)")
 
 if __name__ == "__main__":
     main()
