@@ -672,7 +672,7 @@ class BatchCreatorMainWindow(QMainWindow):
         count, ok = QInputDialog.getInt(
             self, tr("Generate Accounts"), 
             tr("How many accounts to generate?"),
-            value=10, min=1, max=1000
+            10, 1, 1000
         )
         
         if ok:

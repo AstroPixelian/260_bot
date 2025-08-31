@@ -39,7 +39,7 @@ AutomationBackend = Literal["playwright", "selenium"]
 class AutomationService:
     """Service for automated account registration with multiple backend support"""
     
-    def __init__(self, backend: AutomationBackend = "selenium"):
+    def __init__(self, backend: AutomationBackend = "playwright"):
         self.is_running = False
         self.is_paused = False
         self.current_account_index = 0
