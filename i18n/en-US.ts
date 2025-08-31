@@ -311,5 +311,29 @@ File: %1</translation>
         <source>Registered successfully</source>
         <translation>Registered successfully</translation>
     </message>
+    <message>
+        <source>Switch language / 切换语言</source>
+        <translation>Switch language / 切换语言</translation>
+    </message>
+    <message>
+        <source>Switching to English...</source>
+        <translation>Switching to English...</translation>
+    </message>
+    <message>
+        <source>切换至中文...</source>
+        <translation>Switching to Chinese...</translation>
+    </message>
+    <message>
+        <source>Language switched successfully!</source>
+        <translation>Language switched successfully!</translation>
+    </message>
+    <message>
+        <source>Language Changed</source>
+        <translation>Language Changed</translation>
+    </message>
+    <message>
+        <source>Language has been changed successfully!</source>
+        <translation>Language has been changed successfully!</translation>
+    </message>
 </context>
 </TS>

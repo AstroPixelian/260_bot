@@ -230,6 +230,9 @@ class BatchCreatorMainWindow(QMainWindow):
             self.status_bar.showMessage(tr("Stopped"))
         elif current_status in ["Completed", "已完成"]:
             self.status_bar.showMessage(tr("Completed"))
+        
+        # Update language button
+        self.update_language_button()
     
     def setup_logging(self):
         """Setup logging to both file and GUI"""
@@ -325,7 +328,16 @@ class BatchCreatorMainWindow(QMainWindow):
         self.btn_export.setToolTip(tr("Export results to CSV file"))
         layout.addWidget(self.btn_export)
         
+        # Add stretch to push language button to the right
         layout.addStretch()
+        
+        # Language switch button (right-aligned)
+        self.btn_language = QPushButton()
+        self.btn_language.setToolTip(tr("Switch language / 切换语言"))
+        self.btn_language.setMaximumWidth(50)  # Wider for full icon display
+        self.btn_language.setMinimumWidth(50)   # Fixed width
+        self.update_language_button()
+        layout.addWidget(self.btn_language)
     
     def create_progress_panel(self, parent_layout):
         """Create progress overview panel"""
@@ -545,6 +557,7 @@ class BatchCreatorMainWindow(QMainWindow):
         self.btn_pause.clicked.connect(self.pause_processing)
         self.btn_stop.clicked.connect(self.stop_processing)
         self.btn_export.clicked.connect(self.export_results)
+        self.btn_language.clicked.connect(self.toggle_language)
     
     def update_button_states(self):
         """Update button enabled/disabled states based on current state"""
@@ -858,6 +871,34 @@ class BatchCreatorMainWindow(QMainWindow):
         except Exception as e:
             self.log_message(tr("Failed to export results: %1").arg(str(e)))
             QMessageBox.critical(self, tr("Error"), tr("Failed to export results:\n%1").arg(str(e)))
+    
+    # Language related methods
+    def update_language_button(self):
+        """Update language button text based on current language"""
+        # Only show icon, no text
+        self.btn_language.setText("🌐")
+    
+    def toggle_language(self):
+        """Toggle between Chinese and English"""
+        translation_manager = get_translation_manager()
+        current_locale = translation_manager.get_current_locale()
+        
+        # Switch to the other language
+        if current_locale == 'zh-CN':
+            new_locale = 'en-US'
+            self.log_message(tr("Switching to English..."))
+        else:
+            new_locale = 'zh-CN'
+            self.log_message(tr("切换至中文..."))
+        
+        # Apply the new language
+        success = translation_manager.switch_language(new_locale)
+        if success:
+            self.retranslate_ui(new_locale)
+            self.log_message(tr("Language switched successfully!"))
+        else:
+            self.log_message(f"Failed to switch language to {new_locale}")
+            QMessageBox.warning(self, "Error", f"Failed to switch language to {new_locale}")
 
 
 # Main Application Class
