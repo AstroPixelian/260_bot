@@ -724,6 +724,18 @@ class BatchCreatorMainWindow(QMainWindow):
     def toggle_language(self):
         """Toggle between Chinese and English"""
         translation_manager = get_translation_manager()
+        if translation_manager is None:
+            print("Warning: Translation manager not initialized. Trying to initialize...")
+            from PySide6.QtWidgets import QApplication
+            app = QApplication.instance()
+            if app:
+                init_translation_manager(app)
+                translation_manager = get_translation_manager()
+            
+        if translation_manager is None:
+            print("Error: Could not initialize translation manager")
+            return
+            
         current_locale = translation_manager.get_current_locale()
         
         new_locale = 'en-US' if current_locale == 'zh-CN' else 'zh-CN'

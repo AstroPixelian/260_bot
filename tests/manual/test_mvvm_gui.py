@@ -14,7 +14,7 @@ sys.path.insert(0, str(project_root / 'src'))  # Add src directory for translati
 
 from PySide6.QtWidgets import QApplication
 from src.batch_creator_gui import BatchCreatorMainWindow
-from src.viewmodels.batch_creator_viewmodel import BatchCreatorViewModel
+from src.translation_manager import init_translation_manager
 
 
 def run_mvvm_gui():
@@ -25,6 +25,9 @@ def run_mvvm_gui():
     app = QApplication(sys.argv)
     app.setApplicationName("360 Batch Account Creator")
     app.setApplicationVersion("2.0")
+    
+    # Initialize translation system BEFORE creating GUI
+    init_translation_manager(app)
     
     # Create and show main window (ViewModel is created internally)
     main_window = BatchCreatorMainWindow()
