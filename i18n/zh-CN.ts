@@ -332,6 +332,26 @@ File: %1</source>
         <translation>语言已更改</translation>
     </message>
     <message>
+        <source>Username</source>
+        <translation>用户名</translation>
+    </message>
+    <message>
+        <source>Password</source>
+        <translation>密码</translation>
+    </message>
+    <message>
+        <source>Copy to clipboard</source>
+        <translation>复制到剪贴板</translation>
+    </message>
+    <message>
+        <source>Toggle password visibility</source>
+        <translation>切换密码可见性</translation>
+    </message>
+    <message>
+        <source>Copy password to clipboard</source>
+        <translation>复制密码到剪贴板</translation>
+    </message>
+    <message>
         <source>Language has been changed successfully!</source>
         <translation>语言已成功更改！</translation>
     </message>

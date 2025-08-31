@@ -335,5 +335,25 @@ File: %1</translation>
         <source>Language has been changed successfully!</source>
         <translation>Language has been changed successfully!</translation>
     </message>
+    <message>
+        <source>Username</source>
+        <translation>Username</translation>
+    </message>
+    <message>
+        <source>Password</source>
+        <translation>Password</translation>
+    </message>
+    <message>
+        <source>Copy to clipboard</source>
+        <translation>Copy to clipboard</translation>
+    </message>
+    <message>
+        <source>Toggle password visibility</source>
+        <translation>Toggle password visibility</translation>
+    </message>
+    <message>
+        <source>Copy password to clipboard</source>
+        <translation>Copy password to clipboard</translation>
+    </message>
 </context>
 </TS>

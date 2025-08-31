@@ -21,13 +21,13 @@ from PySide6.QtWidgets import (
     QGridLayout, QPushButton, QTableWidget, QTableWidgetItem, 
     QTextEdit, QProgressBar, QLabel, QFrame, QHeaderView,
     QFileDialog, QMessageBox, QInputDialog, QStatusBar, QSplitter,
-    QMenuBar, QMenu
+    QMenuBar, QMenu, QLineEdit, QCheckBox
 )
 from PySide6.QtCore import (
     Qt, QTimer, Signal, QThread, QSize, QRect, QCoreApplication
 )
 from PySide6.QtGui import (
-    QFont, QPalette, QColor, QPainter, QPen, QBrush, QIcon, QPixmap, QAction
+    QFont, QPalette, QColor, QPainter, QPen, QBrush, QIcon, QPixmap, QAction, QClipboard
 )
 
 # Import translation manager
@@ -95,6 +95,104 @@ class StatusIcon(QWidget):
             painter.setPen(QPen(color, 3))
             painter.drawLine(4, 4, 12, 12)
             painter.drawLine(12, 4, 4, 12)
+
+
+# Custom Table Cell Components
+class CopyableTextWidget(QWidget):
+    """Widget with text and copy button"""
+    def __init__(self, text: str, parent=None):
+        super().__init__(parent)
+        self.text = text
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setSpacing(4)
+        
+        # Text label
+        self.label = QLabel(text)
+        layout.addWidget(self.label)
+        
+        # Copy button
+        self.copy_btn = QPushButton("📋")
+        self.copy_btn.setMaximumWidth(24)
+        self.copy_btn.setMaximumHeight(20)
+        self.copy_btn.setToolTip(tr("Copy to clipboard"))
+        self.copy_btn.clicked.connect(self.copy_to_clipboard)
+        layout.addWidget(self.copy_btn)
+        
+        layout.addStretch()
+    
+    def copy_to_clipboard(self):
+        """Copy text to clipboard"""
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.text)
+        
+    def update_text(self, text: str):
+        """Update the displayed text"""
+        self.text = text
+        self.label.setText(text)
+
+
+class PasswordWidget(QWidget):
+    """Widget with password field, visibility toggle and copy button"""
+    def __init__(self, password: str, parent=None):
+        super().__init__(parent)
+        self.password = password
+        self.is_visible = False
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setSpacing(4)
+        
+        # Password label
+        self.label = QLabel(self.get_display_text())
+        layout.addWidget(self.label)
+        
+        # Eye button (visibility toggle)
+        self.eye_btn = QPushButton("👁️")
+        self.eye_btn.setMaximumWidth(24)
+        self.eye_btn.setMaximumHeight(20)
+        self.eye_btn.setToolTip(tr("Toggle password visibility"))
+        self.eye_btn.clicked.connect(self.toggle_visibility)
+        layout.addWidget(self.eye_btn)
+        
+        # Copy button
+        self.copy_btn = QPushButton("📋")
+        self.copy_btn.setMaximumWidth(24)
+        self.copy_btn.setMaximumHeight(20)
+        self.copy_btn.setToolTip(tr("Copy password to clipboard"))
+        self.copy_btn.clicked.connect(self.copy_to_clipboard)
+        layout.addWidget(self.copy_btn)
+        
+        layout.addStretch()
+    
+    def get_display_text(self):
+        """Get display text (asterisks or plain text)"""
+        if self.is_visible:
+            return self.password
+        else:
+            return "*" * len(self.password)
+    
+    def toggle_visibility(self):
+        """Toggle between asterisks and plain text"""
+        self.is_visible = not self.is_visible
+        self.label.setText(self.get_display_text())
+        
+        # Update eye icon
+        if self.is_visible:
+            self.eye_btn.setText("🙈")  # Hide password
+        else:
+            self.eye_btn.setText("👁️")  # Show password
+    
+    def copy_to_clipboard(self):
+        """Copy password to clipboard"""
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.password)
+    
+    def update_password(self, password: str):
+        """Update the password"""
+        self.password = password
+        self.label.setText(self.get_display_text())
 
 
 # Main Application Window
@@ -213,7 +311,7 @@ class BatchCreatorMainWindow(QMainWindow):
         self.log_header_label.setText(tr("Log Output"))
         
         # Update table headers
-        self.table_accounts.setHorizontalHeaderLabels([tr("Username"), tr("Status"), tr("Notes")])
+        self.table_accounts.setHorizontalHeaderLabels([tr("Username"), tr("Password"), tr("Status"), tr("Notes")])
         
         # Update table content to refresh status displays
         self.update_table()
@@ -412,15 +510,17 @@ class BatchCreatorMainWindow(QMainWindow):
         
         # Table widget
         self.table_accounts = QTableWidget()
-        self.table_accounts.setColumnCount(3)
-        self.table_accounts.setHorizontalHeaderLabels([tr("Username"), tr("Status"), tr("Notes")])
+        self.table_accounts.setColumnCount(4)  # Add password column
+        self.table_accounts.setHorizontalHeaderLabels([tr("Username"), tr("Password"), tr("Status"), tr("Notes")])
         
         # Configure table
         header = self.table_accounts.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)  # Username
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)        # Status  
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)      # Notes
-        header.resizeSection(1, 120)  # Fixed width for status column
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Password  
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)        # Status  
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)      # Notes
+        header.resizeSection(1, 180)  # Fixed width for password column
+        header.resizeSection(2, 140)  # Fixed width for status column
         
         self.table_accounts.setAlternatingRowColors(True)
         self.table_accounts.setSelectionBehavior(QTableWidget.SelectRows)
@@ -601,8 +701,13 @@ class BatchCreatorMainWindow(QMainWindow):
         self.table_accounts.setRowCount(len(self.accounts))
         
         for row, account in enumerate(self.accounts):
-            # Username
-            self.table_accounts.setItem(row, 0, QTableWidgetItem(account.username))
+            # Username with copy button
+            username_widget = CopyableTextWidget(account.username)
+            self.table_accounts.setCellWidget(row, 0, username_widget)
+            
+            # Password with visibility toggle and copy button
+            password_widget = PasswordWidget(account.password)
+            self.table_accounts.setCellWidget(row, 1, password_widget)
             
             # Status with icon and text
             status_widget = QWidget()
@@ -627,10 +732,10 @@ class BatchCreatorMainWindow(QMainWindow):
             status_layout.addWidget(status_text)
             status_layout.addStretch()
             
-            self.table_accounts.setCellWidget(row, 1, status_widget)
+            self.table_accounts.setCellWidget(row, 2, status_widget)
             
             # Notes
-            self.table_accounts.setItem(row, 2, QTableWidgetItem(account.notes))
+            self.table_accounts.setItem(row, 3, QTableWidgetItem(account.notes))
     
     def log_message(self, message: str):
         """Add a message to the log output"""
