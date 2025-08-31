@@ -82,34 +82,94 @@ class AccountGenerator:
         return username.lower()
 
     def generate_password(self):
-        """Generate a random password based on config."""
+        """Generate a random password containing letters and numbers (AC requirement)."""
         config = self.config.get("account_generator", {})
-        length = random.randint(
-            config.get("password_min_length", 12),
-            config.get("password_max_length", 20)
-        )
-        chars = (
-            string.ascii_lowercase +
-            string.ascii_uppercase +
-            string.digits +
-            config.get("password_special_chars", "!@#$%^&*")
-        )
-        password = ''.join(random.choice(chars) for _ in range(length))
-        # Ensure at least one of each required character type
+        # Set default length to around 10 characters as specified in story
+        min_length = config.get("password_min_length", 8)
+        max_length = config.get("password_max_length", 12)
+        length = random.randint(min_length, max_length)
+        
+        # Basic character sets - letters and numbers as minimum requirement
+        letters = string.ascii_lowercase + string.ascii_uppercase
+        numbers = string.digits
+        special_chars = config.get("password_special_chars", "!@#$%^&*")
+        
+        # Generate password ensuring it contains both letters and numbers
+        password = ""
+        
+        # Ensure at least one letter and one number
+        password += random.choice(letters)
+        password += random.choice(numbers)
+        
+        # Fill the rest with random chars from all sets
+        all_chars = letters + numbers + special_chars
+        for _ in range(length - 2):
+            password += random.choice(all_chars)
+        
+        # Shuffle the password to randomize positions
+        password_list = list(password)
+        random.shuffle(password_list)
+        password = ''.join(password_list)
+        
+        # Final validation to ensure complexity requirements
         password = self._ensure_password_complexity(password)
         return password
 
     def _ensure_password_complexity(self, password):
-        """Ensure password meets complexity requirements."""
+        """Ensure password meets complexity requirements (letters + numbers minimum)."""
+        # Ensure minimum requirements: letters and numbers
         if not any(c.islower() for c in password):
             password = password[:-1] + random.choice(string.ascii_lowercase)
         if not any(c.isupper() for c in password):
             password = password[:-1] + random.choice(string.ascii_uppercase)
         if not any(c.isdigit() for c in password):
             password = password[:-1] + random.choice(string.digits)
-        if not any(c in self.config.get("account_generator", {}).get("password_special_chars", "!@#$%^&*") for c in password):
-            password = password[:-1] + random.choice(self.config.get("account_generator", {}).get("password_special_chars", "!@#$%^&*"))
+        
+        # Only enforce special characters if config requires them
+        config = self.config.get("account_generator", {})
+        special_chars = config.get("password_special_chars", "")
+        if special_chars and not any(c in special_chars for c in password):
+            password = password[:-1] + random.choice(special_chars)
+        
         return password
+
+    def generate_unique_accounts(self, num_accounts) -> list[dict]:
+        """Generate specified number of accounts with username uniqueness guarantee."""
+        if num_accounts < 0:
+            raise ValueError("Number of accounts must be non-negative")
+        
+        try:
+            accounts = []
+            used_usernames = set()
+            max_attempts = num_accounts * 5 if num_accounts > 0 else 0
+            attempts = 0
+            
+            print(f"Generating {num_accounts} unique accounts...")
+            
+            while len(accounts) < num_accounts and attempts < max_attempts:
+                username = self.generate_username()
+                attempts += 1
+                
+                # Check for username collision
+                if username in used_usernames:
+                    continue
+                
+                used_usernames.add(username)
+                account = {
+                    "username": username,
+                    "password": self.generate_password()
+                }
+                accounts.append(account)
+            
+            if len(accounts) < num_accounts:
+                print(f"Warning: Only generated {len(accounts)} unique accounts out of {num_accounts} requested")
+            else:
+                print(f"Generated {num_accounts} unique accounts")
+                
+            return accounts
+        except Exception as e:
+            print(f"Error generating unique accounts: {str(e)}")
+            raise
 
     def generate_accounts(self, num_accounts) -> list[dict]:
         """Generate specified number of accounts and save to CSV."""
@@ -141,6 +201,7 @@ class AccountGenerator:
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Generate random accounts and save to CSV.")
+    parser.add_argument("--generate", type=int, help="Number of accounts to generate (outputs in '账号 --- 密码' format)")
     parser.add_argument("--num", type=int, default=10, help="Number of accounts to generate")
     parser.add_argument("--save-csv", action="store_true", help="Save accounts to CSV file (default: False)")
     parser.add_argument("--output", type=str, default="accounts.csv", help="Output CSV filename (default: accounts.csv)")
@@ -151,21 +212,39 @@ def main():
     if args.output != "accounts.csv":
         generator.output_file = generator.output_dir / args.output
     
-    accounts = generator.generate_accounts(args.num)
+    # Determine number of accounts to generate
+    num_accounts = args.generate if args.generate is not None else args.num
     
-    # Always display accounts in console
-    print(f"\nGenerated {len(accounts)} accounts:")
-    print("-" * 50)
-    for i, account in enumerate(accounts, 1):
-        print(f"{i:2d}. Username: {account['username']}, Password: {account['password']}")
-    print("-" * 50)
+    # Generate accounts with collision detection
+    accounts = generator.generate_unique_accounts(num_accounts)
     
-    # Save to CSV if requested
-    if args.save_csv:
-        generator.save_to_csv(accounts)
-        print(f"Accounts also saved to {generator.output_file}")
+    # Check if this is the new --generate mode (Story 1.4 format)
+    if args.generate is not None:
+        # Output in the required format for Story 1.4: "账号 --- 密码"
+        print(f"\nGenerated {len(accounts)} accounts:")
+        print("-" * 50)
+        for i, account in enumerate(accounts, 1):
+            print(f"{i:2d}. {account['username']} --- {account['password']}")
+        print("-" * 50)
+        
+        # Save to CSV if requested
+        if args.save_csv:
+            generator.save_to_csv(accounts)
+            print(f"Accounts also saved to {generator.output_file}")
     else:
-        print("Accounts not saved to file (use --save-csv to save)")
+        # Legacy format for backward compatibility
+        print(f"\nGenerated {len(accounts)} accounts:")
+        print("-" * 50)
+        for i, account in enumerate(accounts, 1):
+            print(f"{i:2d}. Username: {account['username']}, Password: {account['password']}")
+        print("-" * 50)
+        
+        # Save to CSV if requested
+        if args.save_csv:
+            generator.save_to_csv(accounts)
+            print(f"Accounts also saved to {generator.output_file}")
+        else:
+            print("Accounts not saved to file (use --save-csv to save)")
 
 if __name__ == "__main__":
     main()
