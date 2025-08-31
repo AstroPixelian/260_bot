@@ -21,3 +21,16 @@
 - **动态切换**: 运行时语言切换
 - **状态保存**: 语言选择持久化
 - **翻译覆盖**: 所有UI元素完全翻译
+
+## **7.4 MVVM架构 (MVVM Architecture)**
+**Model层** → **ViewModel层** → **View层**
+- **Model**: Account, AccountStatus (数据模型)
+- **Services**: DataService, AutomationService (业务服务)  
+- **ViewModel**: BatchCreatorViewModel (业务逻辑协调)
+- **View**: BatchCreatorMainWindow (纯UI界面)
+
+## **7.5 核心技术特色 (Core Technical Features)**
+- **信号槽机制**: Qt原生的响应式UI更新
+- **服务层模式**: 业务逻辑完全与UI分离
+- **国际化系统**: Qt Linguist完整支持
+- **模块化设计**: 高内聚低耦合架构

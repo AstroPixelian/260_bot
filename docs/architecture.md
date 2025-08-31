@@ -227,6 +227,19 @@ class AccountStatus(Enum):
 - **状态保存**: 语言选择持久化
 - **翻译覆盖**: 所有UI元素完全翻译
 
+### **7.4 MVVM架构 (MVVM Architecture)**
+**Model层** → **ViewModel层** → **View层**
+- **Model**: Account, AccountStatus (数据模型)
+- **Services**: DataService, AutomationService (业务服务)  
+- **ViewModel**: BatchCreatorViewModel (业务逻辑协调)
+- **View**: BatchCreatorMainWindow (纯UI界面)
+
+### **7.5 核心技术特色 (Core Technical Features)**
+- **信号槽机制**: Qt原生的响应式UI更新
+- **服务层模式**: 业务逻辑完全与UI分离
+- **国际化系统**: Qt Linguist完整支持
+- **模块化设计**: 高内聚低耦合架构
+
 ## **8. 设计模式和最佳实践**
 
 ### **8.1 采用的设计模式**
@@ -309,9 +322,21 @@ class AccountStatus(Enum):
 - **组合优于继承**: 使用组合模式避免深度继承层次
 
 ### **A2. 技术栈选择理由**
-- **PySide6**: 官方支持的Qt绑定，长期稳定
-- **Playwright**: 现代化的浏览器自动化工具
-- **uv**: 比pip更快的Python包管理器
-- **Nuitka**: 比PyInstaller更高效的Python编译器
+  * **仓库结构 (Repository Structure): Polyrepo**
+  * **服务架构 (Service Architecture): MVVM模式的单体应用** 
+  * **测试要求 (Testing Requirements): 架构预留**
+  * **最终技术栈 (Final Tech Stack)**
+      * **编程语言**: **Python 3.12**
+      * **GUI框架**: **PySide6 (Qt6)**
+      * **架构模式**: **MVVM (Model-View-ViewModel)**
+      * **国际化**: **Qt Linguist (.ts/.qm文件)**
+      * **浏览器自动化**: **Playwright** 🔄 **架构预留** - 服务层已预留接口
+      * **依赖管理**: **uv**
+      * **打包与分发**: **Nuitka** 🔄 **计划中** - 可执行文件打包
+  * **架构特色 (Architecture Highlights)**
+      * **MVVM模式**: Model层(数据模型) → ViewModel层(业务逻辑) → View层(UI界面)
+      * **Service层模式**: DataService(数据操作) + AutomationService(自动化流程) 
+      * **信号槽机制**: Qt原生的响应式UI更新机制
+      * **模块化设计**: 高内聚低耦合，便于维护和扩展
 
 这份架构文档为项目的实现提供了完整的技术参考，为后续的开发和维护奠定基础。
