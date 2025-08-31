@@ -155,7 +155,7 @@ def main():
         print(tr("\nOperation cancelled by user"))
         sys.exit(1)
     except Exception as e:
-        print(tr("Unexpected error: %1").arg(str(e)))
+        print(tr("Unexpected error: {0}").format(str(e)))
         sys.exit(1)
 
 

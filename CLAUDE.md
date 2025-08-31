@@ -235,6 +235,11 @@ docs/                        # Documentation only
 
 ### Critical Rules - NEVER VIOLATE
 
+#### Testing with Real Accounts
+- **MANDATORY**: When testing requires real account credentials, use `src/account_generator.py` to generate test accounts
+- **FORBIDDEN**: Never use actual personal accounts or real user credentials in testing
+- **SECURITY**: Generated test accounts should be used only for testing purposes and properly cleaned up afterward
+
 #### Test Organization
 - **MANDATORY**: All tests (unit, integration, manual) MUST be in `tests/` directory or subdirectories
 - **FORBIDDEN**: Never put test files in project root or `src/` directory
