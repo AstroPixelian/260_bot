@@ -2,7 +2,8 @@
 
 
 def main():
-    import rc_project  # noqa
+    # Import resources (will be needed when we set up proper resource compilation)
+    # import rc_project  # noqa
 
     from src.startup import perform_startup
 

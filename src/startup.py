@@ -24,30 +24,28 @@ class StartUp:
     @staticmethod
     def configure_qt_application_data():
         from PySide6.QtCore import QCoreApplication
-        QCoreApplication.setApplicationName("my app name")
-        QCoreApplication.setOrganizationName("my org name")
-        QCoreApplication.setApplicationVersion("my app version")
+        QCoreApplication.setApplicationName("360 Account Batch Creator")
+        QCoreApplication.setOrganizationName("360 Tools")
+        QCoreApplication.setApplicationVersion("1.0.0")
 
     @staticmethod
     def configure_environment_variables():
-        # Qt expects "qtquickcontrols2.conf" at root level, but the way we handle resources does not allow that.
-        # So we need to override the path here
-        os.environ["QT_QUICK_CONTROLS_CONF"] = ":/data/qtquickcontrols2.conf"
+        # No special environment configuration needed for this simple app
+        pass
 
     @staticmethod
     def import_bindings():
-        import src.pyobjects  # noqa: F401
+        # No special Python object bindings needed yet
+        pass
 
     @staticmethod
     def start_application():
-        from src.application import MyApplication
-        app = MyApplication(sys.argv)
+        from src.application import AccountBatchCreatorApp
+        app = AccountBatchCreatorApp(sys.argv)
 
         app.set_window_icon()
         app.set_up_signals()
-        app.set_up_window_event_filter()
         app.start_engine()
-        app.set_up_window_effects()
         app.verify()
 
         sys.exit(app.exec())

@@ -1,21 +1,18 @@
 [project]
-name = "tanke_260_bot"
-version = "0.1.0"
-description = "An unofficial and opinionated project template designed for a quick start with PySide6 and QtQuick."
-readme = "README.MD"
+name = "360-account-batch-creator"
+version = "1.0.0"
+description = "A desktop tool for batch creation of 360 accounts with GUI interface"
+readme = "README.md"
 requires-python = ">=3.12"
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 4 - Beta",
     "License :: OSI Approved :: GNU General Public License v3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
     "Private :: Do Not Upload",
 ]
 dependencies = [
     "pyside6-essentials==6.9.1",
+    "playwright>=1.44.0",
     "pywin32>=311; sys_platform == 'win32'",
 ]
 
