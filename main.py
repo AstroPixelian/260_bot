@@ -12,7 +12,7 @@ def main():
             from src.account_generator import main as generator_main
             generator_main()
         # Check for registration CLI mode
-        elif any(arg in ['--username', '--password', '-h', '--help'] for arg in sys.argv):
+        elif any(arg in ['--username', '--password', '-h', '--help', '--verbose', '-v', '--json', '--error-log', '--backend'] for arg in sys.argv):
             # CLI mode - import and run CLI handler
             from src.cli import main as cli_main
             cli_main()
