@@ -19,9 +19,11 @@ def test_translation_core():
     """Test core translation functionality without GUI"""
     print("Testing Translation Manager Core Functionality...")
     
-    # Create minimal QApplication for translation system
-    app = QApplication([])
-    app.setApplicationName("Test App")
+    # Create minimal QApplication for translation system or reuse existing
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+        app.setApplicationName("Test App")
     
     # Create translation manager
     tm = TranslationManager(app)

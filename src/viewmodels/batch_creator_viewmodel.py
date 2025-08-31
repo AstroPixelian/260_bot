@@ -6,10 +6,10 @@ from typing import List, Callable, Optional
 from PySide6.QtCore import QObject, Signal, QTimer
 from PySide6.QtWidgets import QApplication
 
-from models.account import Account, AccountStatus
-from services.data_service import DataService
-from services.automation_service import AutomationService
-from translation_manager import tr
+from ..models.account import Account, AccountStatus
+from ..services.data_service import DataService
+from ..services.automation_service import AutomationService
+from ..translation_manager import tr
 
 
 class BatchCreatorViewModel(QObject):

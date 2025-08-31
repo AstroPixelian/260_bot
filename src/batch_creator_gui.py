@@ -24,11 +24,11 @@ from PySide6.QtGui import (
 )
 
 # Import translation manager
-from translation_manager import init_translation_manager, get_translation_manager, tr
+from .translation_manager import init_translation_manager, get_translation_manager, tr
 
 # Import business logic
-from models.account import Account, AccountStatus
-from viewmodels.batch_creator_viewmodel import BatchCreatorViewModel
+from .models.account import Account, AccountStatus
+from .viewmodels.batch_creator_viewmodel import BatchCreatorViewModel
 
 
 # Custom Status Icon Widget

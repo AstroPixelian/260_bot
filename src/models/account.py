@@ -4,7 +4,7 @@ Account data model for 360 Batch Account Creator
 
 from dataclasses import dataclass
 from enum import Enum
-from translation_manager import tr
+from ..translation_manager import tr
 
 
 class AccountStatus(Enum):

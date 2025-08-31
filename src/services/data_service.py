@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import List, Optional
 from datetime import datetime
 
-from models.account import Account, AccountStatus
-from translation_manager import tr
+from ..models.account import Account, AccountStatus
+from ..translation_manager import tr
 
 
 class DataService:

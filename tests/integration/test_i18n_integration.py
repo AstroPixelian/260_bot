@@ -48,8 +48,7 @@ def test_i18n_with_mvvm():
     print(f"Switch to en-US: {'Success' if success else 'Failed'}")
     
     # Create MVVM GUI components
-    view_model = BatchCreatorViewModel()
-    main_window = BatchCreatorMainWindow(view_model)
+    main_window = BatchCreatorMainWindow()  # Constructor doesn't take parameters
     
     # Show the main window
     print("\n--- Showing MVVM Main Window ---")

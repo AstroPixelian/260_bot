@@ -5,8 +5,8 @@ Automation service for batch account registration
 import random
 import asyncio
 from typing import Callable, Optional
-from models.account import Account, AccountStatus
-from translation_manager import tr
+from ..models.account import Account, AccountStatus
+from ..translation_manager import tr
 
 
 class AutomationService:
