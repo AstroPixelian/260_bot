@@ -24,5 +24,8 @@ dev = [
     "pytest>=8.4.1",
 ]
 
+[tool.uv]
+index-url = "https://mirrors.aliyun.com/pypi/simple/"
+
 [tool.pyside6-project]
 files = []
