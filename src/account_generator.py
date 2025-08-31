@@ -116,8 +116,14 @@ class AccountGenerator:
         return password
 
     def _ensure_password_complexity(self, password):
-        """Ensure password meets complexity requirements (letters + numbers minimum)."""
-        # Ensure minimum requirements: letters and numbers
+        """Ensure password meets complexity requirements (letters + numbers minimum).
+        
+        This method guarantees passwords contain at least one lowercase letter,
+        one uppercase letter, and one digit as per AC requirements.
+        """
+        config = self.config.get("account_generator", {})
+        
+        # Ensure minimum requirements: letters and numbers (AC requirement)
         if not any(c.islower() for c in password):
             password = password[:-1] + random.choice(string.ascii_lowercase)
         if not any(c.isupper() for c in password):
@@ -125,8 +131,7 @@ class AccountGenerator:
         if not any(c.isdigit() for c in password):
             password = password[:-1] + random.choice(string.digits)
         
-        # Only enforce special characters if config requires them
-        config = self.config.get("account_generator", {})
+        # Only enforce special characters if explicitly configured
         special_chars = config.get("password_special_chars", "")
         if special_chars and not any(c in special_chars for c in password):
             password = password[:-1] + random.choice(special_chars)
@@ -134,13 +139,24 @@ class AccountGenerator:
         return password
 
     def generate_unique_accounts(self, num_accounts) -> list[dict]:
-        """Generate specified number of accounts with username uniqueness guarantee."""
+        """Generate specified number of accounts with username uniqueness guarantee.
+        
+        Args:
+            num_accounts (int): Number of accounts to generate (must be non-negative)
+            
+        Returns:
+            list[dict]: List of account dictionaries with 'username' and 'password' keys
+            
+        Raises:
+            ValueError: If num_accounts is negative
+        """
         if num_accounts < 0:
             raise ValueError("Number of accounts must be non-negative")
         
         try:
             accounts = []
             used_usernames = set()
+            # Reasonable retry limit to prevent infinite loops
             max_attempts = num_accounts * 5 if num_accounts > 0 else 0
             attempts = 0
             
@@ -150,7 +166,7 @@ class AccountGenerator:
                 username = self.generate_username()
                 attempts += 1
                 
-                # Check for username collision
+                # Skip duplicate usernames within this batch
                 if username in used_usernames:
                     continue
                 
@@ -161,6 +177,7 @@ class AccountGenerator:
                 }
                 accounts.append(account)
             
+            # Warn if we couldn't generate the requested number of unique accounts
             if len(accounts) < num_accounts:
                 print(f"Warning: Only generated {len(accounts)} unique accounts out of {num_accounts} requested")
             else:
