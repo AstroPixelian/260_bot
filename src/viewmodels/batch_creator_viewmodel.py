@@ -82,11 +82,11 @@ class BatchCreatorViewModel(QObject):
             count = self.data_service.import_from_csv(file_path)
             self.accounts_changed.emit()
             self.statistics_changed.emit()
-            self._on_log_message(tr("Successfully imported %1 accounts from CSV").arg(count))
+            self._on_log_message(tr("Successfully imported %1 accounts from CSV").replace("%1", str(count)))
             return True
         
         except Exception as e:
-            self._on_log_message(tr("Failed to import CSV: %1").arg(str(e)))
+            self._on_log_message(tr("Failed to import CSV: %1").replace("%1", str(e)))
             return False
     
     def generate_random_accounts(self, count: int) -> bool:
@@ -101,17 +101,17 @@ class BatchCreatorViewModel(QObject):
         """
         try:
             if count <= 0 or count > 1000:
-                self._on_log_message(tr("Invalid account count: %1").arg(count))
+                self._on_log_message(tr("Invalid account count: %1").replace("%1", str(count)))
                 return False
             
             generated_count = self.data_service.generate_random_accounts(count)
             self.accounts_changed.emit()
             self.statistics_changed.emit()
-            self._on_log_message(tr("Generated %1 random accounts").arg(generated_count))
+            self._on_log_message(tr("Generated %1 random accounts").replace("%1", str(generated_count)))
             return True
         
         except Exception as e:
-            self._on_log_message(tr("Failed to generate accounts: %1").arg(str(e)))
+            self._on_log_message(tr("Failed to generate accounts: %1").replace("%1", str(e)))
             return False
     
     def export_accounts_to_csv(self, file_path: str, include_results: bool = True) -> bool:
@@ -128,11 +128,11 @@ class BatchCreatorViewModel(QObject):
         try:
             success = self.data_service.export_to_csv(file_path, include_results)
             if success:
-                self._on_log_message(tr("Results exported to: %1").arg(file_path))
+                self._on_log_message(tr("Results exported to: %1").replace("%1", file_path))
             return success
         
         except Exception as e:
-            self._on_log_message(tr("Failed to export results: %1").arg(str(e)))
+            self._on_log_message(tr("Failed to export results: %1").replace("%1", str(e)))
             return False
     
     def clear_accounts(self):

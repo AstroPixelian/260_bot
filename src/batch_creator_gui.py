@@ -84,9 +84,9 @@ class CopyableTextWidget(QWidget):
         self.label = QLabel(text)
         layout.addWidget(self.label)
         
-        self.copy_btn = QPushButton("📋")
-        self.copy_btn.setMaximumWidth(24)
-        self.copy_btn.setMaximumHeight(20)
+        self.copy_btn = QPushButton("Copy")
+        self.copy_btn.setFixedSize(50, 24)
+        self.copy_btn.setStyleSheet("font-size: 10px;")
         self.copy_btn.setToolTip(tr("Copy to clipboard"))
         self.copy_btn.clicked.connect(self.copy_to_clipboard)
         layout.addWidget(self.copy_btn)
@@ -116,16 +116,16 @@ class PasswordWidget(QWidget):
         self.label = QLabel(self.get_display_text())
         layout.addWidget(self.label)
         
-        self.eye_btn = QPushButton("👁️")
-        self.eye_btn.setMaximumWidth(24)
-        self.eye_btn.setMaximumHeight(20)
+        self.eye_btn = QPushButton("Show")
+        self.eye_btn.setFixedSize(50, 24)
+        self.eye_btn.setStyleSheet("font-size: 10px;")
         self.eye_btn.setToolTip(tr("Toggle password visibility"))
         self.eye_btn.clicked.connect(self.toggle_visibility)
         layout.addWidget(self.eye_btn)
         
-        self.copy_btn = QPushButton("📋")
-        self.copy_btn.setMaximumWidth(24)
-        self.copy_btn.setMaximumHeight(20)
+        self.copy_btn = QPushButton("Copy")
+        self.copy_btn.setFixedSize(50, 24)
+        self.copy_btn.setStyleSheet("font-size: 10px;")
         self.copy_btn.setToolTip(tr("Copy password to clipboard"))
         self.copy_btn.clicked.connect(self.copy_to_clipboard)
         layout.addWidget(self.copy_btn)
@@ -138,7 +138,8 @@ class PasswordWidget(QWidget):
     def toggle_visibility(self):
         self.is_visible = not self.is_visible
         self.label.setText(self.get_display_text())
-        self.eye_btn.setText("🙈" if self.is_visible else "👁️")
+        # Toggle between Show/Hide text
+        self.eye_btn.setText("Hide" if self.is_visible else "Show")
     
     def copy_to_clipboard(self):
         self.viewmodel.copy_text_to_clipboard(self.password)
@@ -662,7 +663,7 @@ class BatchCreatorMainWindow(QMainWindow):
             success = self.viewmodel.import_accounts_from_csv(file_path)
             if success:
                 QMessageBox.information(self, tr("Success"), 
-                    tr("Imported %1 accounts successfully!").arg(len(self.viewmodel.accounts)))
+                    tr("Imported %1 accounts successfully!").replace("%1", str(len(self.viewmodel.accounts))))
             else:
                 QMessageBox.critical(self, tr("Error"), 
                     tr("Failed to import CSV file. Check the log for details."))
@@ -679,7 +680,7 @@ class BatchCreatorMainWindow(QMainWindow):
             success = self.viewmodel.generate_random_accounts(count)
             if success:
                 QMessageBox.information(self, tr("Success"), 
-                    tr("Generated %1 accounts successfully!").arg(count))
+                    tr("Generated %1 accounts successfully!").replace("%1", str(count)))
             else:
                 QMessageBox.critical(self, tr("Error"), 
                     tr("Failed to generate accounts. Check the log for details."))
@@ -711,7 +712,7 @@ class BatchCreatorMainWindow(QMainWindow):
             success = self.viewmodel.export_accounts_to_csv(file_path, include_results=True)
             if success:
                 QMessageBox.information(self, tr("Success"), 
-                    tr("Results exported successfully!\n\nFile: %1").arg(os.path.basename(file_path)))
+                    tr("Results exported successfully!\n\nFile: %1").replace("%1", os.path.basename(file_path)))
             else:
                 QMessageBox.critical(self, tr("Error"), 
                     tr("Failed to export results. Check the log for details."))
@@ -746,7 +747,7 @@ class BatchCreatorMainWindow(QMainWindow):
     def on_batch_complete(self, success_count: int, failed_count: int):
         """Handle batch processing completion"""
         QMessageBox.information(self, tr("Processing Complete"), 
-            tr("Batch processing completed!\n\nSuccess: %1\nFailed: %2").arg(success_count, failed_count))
+            tr("Batch processing completed!\n\nSuccess: %1\nFailed: %2").replace("%1", str(success_count)).replace("%2", str(failed_count)))
     
     def closeEvent(self, event):
         """Handle application close event"""
