@@ -418,9 +418,9 @@ class AutomationService:
                 self.on_log_message(tr("DEBUG: Current URL: %1").replace("%1", page.url))
             
             # Add a longer delay to ensure page is fully loaded and allow manual inspection
-            await asyncio.sleep(5)
+            await asyncio.sleep(10)
             if self.on_log_message:
-                self.on_log_message(tr("DEBUG: Waited 5 seconds for page to fully load and stabilize"))
+                self.on_log_message(tr("DEBUG: Waited 10 seconds for page to fully load and stabilize"))
             
             # Step 2: Click registration button
             try:
