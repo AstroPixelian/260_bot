@@ -1,10 +1,10 @@
 # **全栈架构文档: 360批量账号注册工具 (更新版)**
 
-**版本: 2.0 - 最终实现版本**
+**版本: 1.0 - 重新实现版本**
 
 ## **1. 引言 (Introduction)**
 
-  * **文档目的**: 本文档详细描述了"360账号批量注册工具"的最终实现架构，包括MVVM设计模式、多语言支持、完整的UI功能和严格的分层架构。
+  * **文档目的**: 本文档详细描述了"360账号批量注册工具"的架构设计，包括MVVM设计模式、多语言支持、完整的UI功能和严格的分层架构。
   * **架构原则**: 基于MVVM模式实现UI与业务逻辑的完全分离，确保代码的可维护性、可测试性和可扩展性。
 
 ## **2. 高层架构 (High Level Architecture)**
@@ -84,7 +84,7 @@ graph TD
 ### **3.2 服务层架构**
 
 #### **DataService (数据服务)**
-```python
+
 职责:
 - CSV文件导入/导出
 - 随机账户生成
@@ -96,10 +96,10 @@ graph TD
 - generate_random_accounts()
 - export_to_csv()
 - get_statistics()
-```
+
 
 #### **AutomationService (自动化服务)**
-```python
+
 职责:
 - 批量注册流程管理
 - 状态控制 (开始/暂停/停止)
@@ -111,10 +111,10 @@ graph TD
 - pause_registration()
 - stop_registration()
 - process_next_account()
-```
+
 
 #### **TranslationManager (国际化服务)**
-```python
+
 职责:
 - 多语言翻译管理
 - 语言切换
@@ -124,7 +124,7 @@ graph TD
 支持语言:
 - 中文 (zh-CN)
 - 英文 (en-US)
-```
+
 
 ## **4. 技术栈 (Updated Tech Stack)**
 
@@ -314,4 +314,4 @@ class AccountStatus(Enum):
 - **uv**: 比pip更快的Python包管理器
 - **Nuitka**: 比PyInstaller更高效的Python编译器
 
-这份架构文档反映了项目的最终实现状态，为后续的维护和扩展提供了完整的技术参考。
+这份架构文档为项目的实现提供了完整的技术参考，为后续的开发和维护奠定基础。
