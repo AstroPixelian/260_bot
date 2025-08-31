@@ -1,0 +1,6 @@
+[project]
+name = "tanke-260-bot"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = []
