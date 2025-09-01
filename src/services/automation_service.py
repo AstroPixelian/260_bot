@@ -128,7 +128,7 @@ class AutomationService:
         """Clear the error log"""
         self.error_log.clear()
     
-    async def _safe_navigate(self, page: Page, url: str, max_retries: int = 3, timeout: int = 60) -> None:
+    async def _safe_navigate(self, page: Page, url: str, max_retries: int = 3, timeout: int = 30) -> None:
         """Navigate to URL with retry logic and proper error handling"""
         context = "navigation"
         
@@ -136,9 +136,20 @@ class AutomationService:
             try:
                 self._log_debug(f"Navigation attempt {attempt + 1}/{max_retries} to {url}", context)
                 
-                await page.goto(url, wait_until='networkidle', timeout=timeout * 1000)
-                self._log_debug(f"Successfully navigated to {url}", context)
-                return
+                # 使用更宽松的等待策略，优先使用 domcontentloaded
+                try:
+                    await page.goto(url, wait_until='domcontentloaded', timeout=timeout * 1000)
+                    self._log_debug(f"Successfully navigated to {url} (domcontentloaded)", context)
+                    
+                    # 额外等待一下让页面稳定
+                    await asyncio.sleep(2)
+                    return
+                except PlaywrightTimeoutError:
+                    # 如果 domcontentloaded 也超时，尝试 load
+                    self._log_debug(f"domcontentloaded timeout, trying load strategy", context)
+                    await page.goto(url, wait_until='load', timeout=(timeout - 5) * 1000)
+                    self._log_debug(f"Successfully navigated to {url} (load)", context)
+                    return
                 
             except PlaywrightTimeoutError as e:
                 if attempt < max_retries - 1:
@@ -536,10 +547,19 @@ class AutomationService:
                             '--force-color-profile=srgb',
                             '--metrics-recording-only',
                             '--use-mock-keychain',
-                            '--disable-background-networking'
+                            '--disable-background-networking',
+                            # 网络优化参数
+                            '--aggressive-cache-discard',
+                            '--disable-background-downloads',
+                            '--disable-component-extensions-with-background-pages',
+                            '--disable-default-apps',
+                            '--disable-popup-blocking',
+                            '--disable-translate',
+                            '--disable-backing-store-limit',
+                            '--disable-blink-features=BlockCredentialedSubresources'
                         ],
-                        slow_mo=200,  # Increase delay between actions for stability
-                        timeout=90000  # 90 second timeout for browser launch
+                        slow_mo=100,  # 减少延迟提高速度
+                        timeout=60000  # 60秒浏览器启动超时
                     )
                     self._log_debug("Chromium browser launched successfully", context)
                 except PlaywrightTimeoutError as e:
@@ -559,7 +579,15 @@ class AutomationService:
                         viewport=ViewportSize({'width': 1280, 'height': 720}),
                         user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                     )
-                    self._log_debug("Browser context created successfully", context)
+                    
+                    # 阻止图片加载以节省流量和加速页面加载
+                    await self.browser_context.route("**/*.{png,jpg,jpeg,gif,webp,svg,ico}", lambda route: route.abort())
+                    # 也阻止视频和音频文件
+                    await self.browser_context.route("**/*.{mp4,avi,mov,wmv,flv,webm,mp3,wav,ogg}", lambda route: route.abort())
+                    # 阻止字体文件（可选，但保留以免影响显示）
+                    # await self.browser_context.route("**/*.{woff,woff2,ttf,eot,otf}", lambda route: route.abort())
+                    
+                    self._log_debug("Browser context created successfully with image blocking", context)
                 except Exception as e:
                     raise BrowserInitializationError(
                         f"Failed to create browser context: {str(e)}",
@@ -726,14 +754,14 @@ class AutomationService:
             
             # Navigate to 360.cn with comprehensive error handling
             try:
-                await self._safe_navigate(page, 'https://wan.360.cn/', max_retries=3, timeout=60)
+                await self._safe_navigate(page, 'https://wan.360.cn/', max_retries=2, timeout=20)
                 if self.on_log_message:
                     self.on_log_message(tr("Navigated to 360.cn"))
                     self.on_log_message(tr("DEBUG: Current URL: %1").replace("%1", page.url))
                 
-                # Wait for page to stabilize
-                await asyncio.sleep(10)
-                self._log_debug("Waited 10 seconds for page to fully load and stabilize", context)
+                # Wait for page to stabilize - 减少等待时间
+                await asyncio.sleep(3)
+                self._log_debug("Waited 3 seconds for page to fully load and stabilize", context)
                 
             except PageNavigationError as e:
                 self._log_error(e, context, account)
@@ -749,10 +777,17 @@ class AutomationService:
             self._log_debug("Step 2 - Looking for registration button", context)
             account.mark_processing(tr("Opening registration form"))
             
+            # Wait for JavaScript to initialize the page elements
+            self._log_debug("Waiting for page JavaScript to initialize elements", context)
+            await asyncio.sleep(3)
+            
             registration_selectors = [
-                'text="注册"',
-                'text="立即注册"',
+                '.quc-link-sign-up',  # 360.cn 实际使用的注册按钮类名
+                '.wan-register-btn',
                 'text="免费注册"',
+                'text="注册"',
+                'a[data-bk="wan-public-reg"]',
+                'text="立即注册"',
                 'a[href*="register"]',
                 'xpath=/html/body/div/div/div[2]/div/div/div/div[2]/form/div[6]/div[2]/a[1]'
             ]
@@ -1204,11 +1239,14 @@ class AutomationService:
             
             # Try multiple selectors for the registration button
             registration_selectors = [
-                (By.XPATH, '/html/body/div/div/div[2]/div/div/div/div[2]/form/div[6]/div[2]/a[1]'),
+                (By.CSS_SELECTOR, '.quc-link-sign-up'),  # 360.cn 实际使用的注册按钮类名
+                (By.CSS_SELECTOR, '.wan-register-btn'),
+                (By.CSS_SELECTOR, 'a[data-bk="wan-public-reg"]'),
+                (By.LINK_TEXT, '免费注册'),
                 (By.LINK_TEXT, '注册'),
                 (By.LINK_TEXT, '立即注册'),
-                (By.LINK_TEXT, '免费注册'),
                 (By.CSS_SELECTOR, 'a[href*="register"]'),
+                (By.XPATH, '/html/body/div/div/div[2]/div/div/div/div[2]/form/div[6]/div[2]/a[1]'),
             ]
             
             registration_clicked = False

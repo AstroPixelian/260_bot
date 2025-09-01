@@ -303,6 +303,10 @@ class BatchCreatorViewModel(QObject):
             self._complete_batch_processing(accounts)
             return
         
+        # IMPORTANT: Stop the timer to prevent multiple concurrent registrations
+        if self.processing_timer.isActive():
+            self.processing_timer.stop()
+        
         # Get current account
         account = accounts[self.automation_service.current_account_index]
         
@@ -338,12 +342,19 @@ class BatchCreatorViewModel(QObject):
                     # Move to next account
                     self.automation_service.current_account_index += 1
                     
+                    # IMPORTANT: Restart the timer to process the next account after a delay
+                    QTimer.singleShot(2000, lambda: self._resume_processing())
+                    
                 except Exception as e:
                     # Handle errors on main thread
-                    QTimer.singleShot(0, lambda: account.mark_failed(str(e)))
-                    QTimer.singleShot(0, lambda: self._on_log_message(tr("❌ Registration error for %1: %2").replace("%1", account.username).replace("%2", str(e))))
+                    error_msg = str(e)
+                    QTimer.singleShot(0, lambda: account.mark_failed(error_msg))
+                    QTimer.singleShot(0, lambda: self._on_log_message(tr("❌ Registration error for %1: %2").replace("%1", account.username).replace("%2", error_msg)))
                     QTimer.singleShot(0, lambda: self._on_account_complete(account))
                     self.automation_service.current_account_index += 1
+                    
+                    # IMPORTANT: Restart the timer even after error
+                    QTimer.singleShot(2000, lambda: self._resume_processing())
             
             # Create and run event loop in thread
             try:
@@ -352,15 +363,33 @@ class BatchCreatorViewModel(QObject):
                 loop.run_until_complete(register_account())
                 loop.close()
             except Exception as e:
-                QTimer.singleShot(0, lambda: self._on_log_message(tr("❌ Thread error: %1").replace("%1", str(e))))
-                QTimer.singleShot(0, lambda: account.mark_failed(str(e)))
+                error_msg = str(e)
+                QTimer.singleShot(0, lambda: self._on_log_message(tr("❌ Thread error: %1").replace("%1", error_msg)))
+                QTimer.singleShot(0, lambda: account.mark_failed(error_msg))
                 QTimer.singleShot(0, lambda: self._on_account_complete(account))
                 self.automation_service.current_account_index += 1
+                
+                # IMPORTANT: Restart the timer even after thread error
+                QTimer.singleShot(2000, lambda: self._resume_processing())
         
         # Start async registration in a separate thread
         registration_thread = threading.Thread(target=run_async_registration)
         registration_thread.daemon = True  # Thread will terminate when main program exits
         registration_thread.start()
+    
+    def _resume_processing(self):
+        """Resume processing by checking if we should continue and restart timer if needed"""
+        if (self.automation_service.is_running and 
+            not self.automation_service.is_paused and 
+            not self.processing_timer.isActive()):
+            
+            accounts = self.data_service.get_accounts()
+            if self.automation_service.current_account_index < len(accounts):
+                # Still have accounts to process, restart the timer
+                self.processing_timer.start(1500)
+            else:
+                # No more accounts, complete batch processing
+                self._complete_batch_processing(accounts)
     
     def _complete_batch_processing(self, accounts):
         """Complete the batch processing"""
