@@ -558,6 +558,7 @@ class BatchCreatorMainWindow(QMainWindow):
     def connect_viewmodel_signals(self):
         """Connect ViewModel signals to UI update methods"""
         self.viewmodel.accounts_changed.connect(self.update_table)
+        self.viewmodel.accounts_changed.connect(self.update_button_states)  # Fix: Update button states when accounts change
         self.viewmodel.statistics_changed.connect(self.update_statistics)
         self.viewmodel.processing_status_changed.connect(self.update_button_states)
         self.viewmodel.log_message.connect(self.log_message)

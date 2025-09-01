@@ -294,12 +294,92 @@ class BatchCreatorViewModel(QObject):
         """Process next account in the batch (called by timer)"""
         accounts = self.data_service.get_accounts()
         
-        if not self.automation_service.process_next_account(accounts):
-            # Batch processing complete
+        # Check if we should continue processing
+        if not self.automation_service.is_running or self.automation_service.is_paused:
             return
         
-        # Schedule completion of current account after a delay
-        QTimer.singleShot(800, lambda: self.automation_service.complete_current_account(accounts))
+        if self.automation_service.current_account_index >= len(accounts):
+            # Batch processing complete
+            self._complete_batch_processing(accounts)
+            return
+        
+        # Get current account
+        account = accounts[self.automation_service.current_account_index]
+        
+        # Mark account as processing
+        account.mark_processing()
+        
+        # Notify UI of account start
+        if self.automation_service.on_account_start:
+            self.automation_service.on_account_start(account)
+        
+        self._on_log_message(tr("🚀 Starting real browser registration for: %1").replace("%1", account.username))
+        
+        # Use QTimer to handle async operation in a thread-safe way
+        import threading
+        
+        def run_async_registration():
+            """Run async registration in a separate thread"""
+            import asyncio
+            
+            async def register_account():
+                try:
+                    success = await self.automation_service.register_single_account(account)
+                    
+                    # Use QTimer.singleShot to safely update UI from main thread
+                    if success:
+                        QTimer.singleShot(0, lambda: self._on_log_message(tr("✅ Registration completed for: %1").replace("%1", account.username)))
+                    else:
+                        QTimer.singleShot(0, lambda: self._on_log_message(tr("❌ Registration failed for: %1").replace("%1", account.username)))
+                    
+                    # Update UI on main thread
+                    QTimer.singleShot(0, lambda: self._on_account_complete(account))
+                    
+                    # Move to next account
+                    self.automation_service.current_account_index += 1
+                    
+                except Exception as e:
+                    # Handle errors on main thread
+                    QTimer.singleShot(0, lambda: account.mark_failed(str(e)))
+                    QTimer.singleShot(0, lambda: self._on_log_message(tr("❌ Registration error for %1: %2").replace("%1", account.username).replace("%2", str(e))))
+                    QTimer.singleShot(0, lambda: self._on_account_complete(account))
+                    self.automation_service.current_account_index += 1
+            
+            # Create and run event loop in thread
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(register_account())
+                loop.close()
+            except Exception as e:
+                QTimer.singleShot(0, lambda: self._on_log_message(tr("❌ Thread error: %1").replace("%1", str(e))))
+                QTimer.singleShot(0, lambda: account.mark_failed(str(e)))
+                QTimer.singleShot(0, lambda: self._on_account_complete(account))
+                self.automation_service.current_account_index += 1
+        
+        # Start async registration in a separate thread
+        registration_thread = threading.Thread(target=run_async_registration)
+        registration_thread.daemon = True  # Thread will terminate when main program exits
+        registration_thread.start()
+    
+    def _complete_batch_processing(self, accounts):
+        """Complete the batch processing"""
+        self.automation_service.is_running = False
+        self.automation_service.is_paused = False
+        
+        # Calculate statistics
+        success_count = len([acc for acc in accounts if acc.status == AccountStatus.SUCCESS])
+        failed_count = len([acc for acc in accounts if acc.status == AccountStatus.FAILED])
+        
+        self._on_log_message(tr("🎉 Batch processing completed! Success: %1, Failed: %2").replace("%1", str(success_count)).replace("%2", str(failed_count)))
+        
+        # Stop the processing timer
+        if self.processing_timer.isActive():
+            self.processing_timer.stop()
+        
+        # Notify UI
+        self.processing_status_changed.emit()
+        self.batch_processing_completed.emit(success_count, failed_count)
     
     # Cleanup
     def cleanup(self):
