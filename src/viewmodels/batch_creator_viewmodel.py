@@ -300,21 +300,32 @@ class BatchCreatorViewModel(QObject):
         """Process next account in the batch (called by timer)"""
         accounts = self.data_service.get_accounts()
         
+        # 增加debug日志
+        self._on_log_message(tr("DEBUG: _process_next_account_step called, accounts count: %1").replace("%1", str(len(accounts))))
+        self._on_log_message(tr("DEBUG: Current account index: %1").replace("%1", str(self.automation_service.current_account_index)))
+        self._on_log_message(tr("DEBUG: Is running: %1, Is paused: %2").replace("%1", str(self.automation_service.is_running)).replace("%2", str(self.automation_service.is_paused)))
+        
         # Check if we should continue processing
         if not self.automation_service.is_running or self.automation_service.is_paused:
+            self._on_log_message(tr("DEBUG: Processing stopped - running: %1, paused: %2").replace("%1", str(self.automation_service.is_running)).replace("%2", str(self.automation_service.is_paused)))
             return
         
         if self.automation_service.current_account_index >= len(accounts):
             # Batch processing complete
+            self._on_log_message(tr("DEBUG: All accounts processed, completing batch"))
             self._complete_batch_processing(accounts)
             return
         
         # IMPORTANT: Stop the timer to prevent multiple concurrent registrations
         if self.processing_timer.isActive():
+            self._on_log_message(tr("DEBUG: Stopping processing timer to prevent concurrent registrations"))
             self.processing_timer.stop()
         
         # Get current account
         account = accounts[self.automation_service.current_account_index]
+        
+        # 增加debug日志
+        self._on_log_message(tr("DEBUG: Processing account %1: %2").replace("%1", str(self.automation_service.current_account_index + 1)).replace("%2", account.username))
         
         # Mark account as processing
         account.mark_processing()
@@ -334,7 +345,12 @@ class BatchCreatorViewModel(QObject):
             
             async def register_account():
                 try:
+                    # 增加debug日志
+                    QTimer.singleShot(0, lambda: self._on_log_message(tr("DEBUG: Calling automation_service.register_single_account for: %1").replace("%1", account.username)))
                     success = await self.automation_service.register_single_account(account)
+                    
+                    # 增加debug日志
+                    QTimer.singleShot(0, lambda: self._on_log_message(tr("DEBUG: Registration result for %1: %2").replace("%1", account.username).replace("%2", str(success))))
                     
                     # Use QTimer.singleShot to safely update UI from main thread
                     if success:
@@ -345,22 +361,32 @@ class BatchCreatorViewModel(QObject):
                     # Update UI on main thread
                     QTimer.singleShot(0, lambda: self._on_account_complete(account))
                     
-                    # Move to next account
-                    self.automation_service.current_account_index += 1
+                    # Move to next account - 确保在主线程中执行
+                    def move_to_next():
+                        self.automation_service.current_account_index += 1
+                        self._on_log_message(tr("DEBUG: Account index incremented to: %1").replace("%1", str(self.automation_service.current_account_index)))
+                        # 延迟调用resume_processing
+                        self._on_log_message(tr("DEBUG: Scheduling _resume_processing in 2 seconds"))
+                        QTimer.singleShot(2000, self._resume_processing)
                     
-                    # IMPORTANT: Restart the timer to process the next account after a delay
-                    QTimer.singleShot(2000, lambda: self._resume_processing())
+                    # 在主线程中执行账号索引递增和恢复处理
+                    QTimer.singleShot(0, move_to_next)
                     
                 except Exception as e:
                     # Handle errors on main thread
                     error_msg = str(e)
-                    QTimer.singleShot(0, lambda: account.mark_failed(error_msg))
-                    QTimer.singleShot(0, lambda: self._on_log_message(tr("❌ Registration error for %1: %2").replace("%1", account.username).replace("%2", error_msg)))
-                    QTimer.singleShot(0, lambda: self._on_account_complete(account))
-                    self.automation_service.current_account_index += 1
+                    def handle_error():
+                        self._on_log_message(tr("DEBUG: Exception in register_account: %1").replace("%1", error_msg))
+                        account.mark_failed(error_msg)
+                        self._on_log_message(tr("❌ Registration error for %1: %2").replace("%1", account.username).replace("%2", error_msg))
+                        self._on_account_complete(account)
+                        self.automation_service.current_account_index += 1
+                        self._on_log_message(tr("DEBUG: Account index incremented after error to: %1").replace("%1", str(self.automation_service.current_account_index)))
+                        # 延迟调用resume_processing
+                        self._on_log_message(tr("DEBUG: Scheduling _resume_processing after error in 2 seconds"))
+                        QTimer.singleShot(2000, self._resume_processing)
                     
-                    # IMPORTANT: Restart the timer even after error
-                    QTimer.singleShot(2000, lambda: self._resume_processing())
+                    QTimer.singleShot(0, handle_error)
             
             # Create and run event loop in thread
             try:
@@ -385,17 +411,26 @@ class BatchCreatorViewModel(QObject):
     
     def _resume_processing(self):
         """Resume processing by checking if we should continue and restart timer if needed"""
+        self._on_log_message(tr("DEBUG: _resume_processing called"))
+        self._on_log_message(tr("DEBUG: Is running: %1, Is paused: %2, Timer active: %3").replace("%1", str(self.automation_service.is_running)).replace("%2", str(self.automation_service.is_paused)).replace("%3", str(self.processing_timer.isActive())))
+        
         if (self.automation_service.is_running and 
             not self.automation_service.is_paused and 
             not self.processing_timer.isActive()):
             
             accounts = self.data_service.get_accounts()
+            self._on_log_message(tr("DEBUG: Checking if more accounts to process. Current index: %1, Total accounts: %2").replace("%1", str(self.automation_service.current_account_index)).replace("%2", str(len(accounts))))
+            
             if self.automation_service.current_account_index < len(accounts):
                 # Still have accounts to process, restart the timer
+                self._on_log_message(tr("DEBUG: Restarting timer for next account registration"))
                 self.processing_timer.start(1500)
             else:
                 # No more accounts, complete batch processing
+                self._on_log_message(tr("DEBUG: No more accounts, completing batch processing"))
                 self._complete_batch_processing(accounts)
+        else:
+            self._on_log_message(tr("DEBUG: Not resuming processing - conditions not met"))
     
     def _complete_batch_processing(self, accounts):
         """Complete the batch processing"""

@@ -232,8 +232,53 @@ class AutomationService:
             })
     
     def _detect_registration_result(self, page_content: str, account: Account) -> tuple[bool, str]:
-        """Detect registration result from page content"""
+        """Detect registration result from page content with precise captcha detection"""
         context = "result_detection"
+        
+        # 精确的验证码检测 - 基于实际HTML特征，避免误检测
+        captcha_indicators = [
+            "quc-slide-con",  # 验证码滑块外层容器 - 高度特异性
+            "quc-captcha-mask",  # 验证码遮罩层 - 360独有
+            "请完成下方拼图验证后继续",  # 验证码具体提示文本
+            "quc-body-tip",  # 验证码提示样式类
+            "verify-slide-con verify-con",  # 滑动验证码双重类名
+            "slide-block",  # 滑动块图片 - 结合其他条件
+            "拖动滑块完成拼图"  # 滑动操作指令文本
+        ]
+        
+        # 检测验证码 - 只要检测到一个高特异性指标即可确认
+        high_specificity_indicators = [
+            "quc-slide-con",
+            "quc-captcha-mask", 
+            "请完成下方拼图验证后继续"
+        ]
+        
+        for indicator in high_specificity_indicators:
+            if indicator in page_content:
+                self._log_debug(f"Detected captcha with high specificity: {indicator}", context)
+                return False, f"CAPTCHA_DETECTED: {indicator}"
+        
+        # 辅助验证码检测 - 需要多个条件同时满足
+        auxiliary_indicators = ["verify-slide-con", "拖动滑块完成拼图"]
+        if all(indicator in page_content for indicator in auxiliary_indicators):
+            self._log_debug("Detected captcha with auxiliary indicators", context)
+            return False, "CAPTCHA_DETECTED: slide verification interface"
+        
+        # 精确的成功登录检测 - 基于登录后的HTML特征
+        success_indicators = [
+            "login-container",  # 登录成功后的容器ID
+            "login-user-info",  # 用户信息区域
+            "wan-logout-btn",   # 退出按钮类名 - 登录成功的关键标志
+            "退出</a>",         # 退出按钮文本
+            "user_info_avatar", # 用户头像链接类名
+            "name-text"         # 用户名文本类名
+        ]
+        
+        # 检测成功登录 - 需要多个登录特征同时存在
+        login_features_found = sum(1 for indicator in success_indicators if indicator in page_content)
+        if login_features_found >= 3:  # 至少3个登录特征同时存在
+            self._log_debug(f"Detected successful login with {login_features_found} features", context)
+            return True, f"Registration successful - login interface detected ({login_features_found} features)"
         
         # Check for already registered messages
         already_registered_messages = [
@@ -241,7 +286,8 @@ class AutomationService:
             "账号已存在", 
             "用户名已存在",
             "已注册",
-            "用户名已被占用"
+            "用户名已被占用",
+            "用户名重复"
         ]
         
         for message in already_registered_messages:
@@ -249,17 +295,17 @@ class AutomationService:
                 self._log_debug(f"Detected already registered: {message}", context)
                 raise AccountAlreadyExistsError(account.username, message)
         
-        # Check for success indicators
-        success_indicators = [
-            "[退出]",
-            "退出",
+        # Check for explicit success messages
+        explicit_success_indicators = [
             "注册成功",
-            "登录成功"
+            "登录成功", 
+            "欢迎使用",
+            "注册完成"
         ]
         
-        for indicator in success_indicators:
+        for indicator in explicit_success_indicators:
             if indicator in page_content:
-                self._log_debug(f"Detected success indicator: {indicator}", context)
+                self._log_debug(f"Detected explicit success indicator: {indicator}", context)
                 return True, f"Registration successful (detected: {indicator})"
         
         # Check for error messages
@@ -580,14 +626,14 @@ class AutomationService:
                         user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                     )
                     
-                    # 阻止图片加载以节省流量和加速页面加载
-                    await self.browser_context.route("**/*.{png,jpg,jpeg,gif,webp,svg,ico}", lambda route: route.abort())
+                    # 暂时移除图片阻止，以便验证码图片能正常显示
+                    # await self.browser_context.route("**/*.{png,jpg,jpeg,gif,webp,svg,ico}", lambda route: route.abort())
                     # 也阻止视频和音频文件
                     await self.browser_context.route("**/*.{mp4,avi,mov,wmv,flv,webm,mp3,wav,ogg}", lambda route: route.abort())
                     # 阻止字体文件（可选，但保留以免影响显示）
                     # await self.browser_context.route("**/*.{woff,woff2,ttf,eot,otf}", lambda route: route.abort())
                     
-                    self._log_debug("Browser context created successfully with image blocking", context)
+                    self._log_debug("Browser context created successfully - images enabled for captcha", context)
                 except Exception as e:
                     raise BrowserInitializationError(
                         f"Failed to create browser context: {str(e)}",
@@ -1002,7 +1048,7 @@ class AutomationService:
                 # Get current page content for analysis
                 page_content = await page.content()
                 
-                # Use our detection method
+                # Use our improved detection method
                 success, message = self._detect_registration_result(page_content, account)
                 
                 if success:
@@ -1010,37 +1056,76 @@ class AutomationService:
                     if self.on_log_message:
                         self.on_log_message(tr("SUCCESS: %1 registered successfully").replace("%1", account.username))
                     return True
-                else:
-                    # No clear result - check for logout button as final verification
-                    logout_selectors = [
-                        'xpath=/html/body/div[1]/div/span[2]/a[2]',
-                        'text="[退出]"',
-                        'text="退出"',
-                        '.wan-logout-btn',
-                        '[data-bk="wan-public-dropout"]'
-                    ]
+                elif "CAPTCHA_DETECTED" in message:
+                    # 检测到验证码
+                    if self.on_log_message:
+                        self.on_log_message(tr("⚠️ CAPTCHA DETECTED for %1: %2").replace("%1", account.username).replace("%2", message))
+                        self.on_log_message(tr("Browser will stay open - please solve manually"))
+                        self.on_log_message(tr("Waiting 120 seconds for manual captcha resolution..."))
                     
-                    try:
-                        element, _ = await self._safe_wait_for_element(page, logout_selectors, "logout_button", timeout=20)
-                        logout_text = await element.text_content()
+                    # 给用户2分钟时间处理验证码
+                    for i in range(120):
+                        await asyncio.sleep(1)
                         
-                        if logout_text and '[退出]' in logout_text:
-                            success_note = tr("Account registered successfully (logout button detected)")
-                            account.mark_success(success_note)
-                            if self.on_log_message:
-                                self.on_log_message(tr("SUCCESS: %1 registered (logout detected)").replace("%1", account.username))
-                            return True
-                        else:
-                            raise RegistrationFailureError(f"Logout button found but invalid text: {logout_text}", "verification_failed")
+                        # 每10秒检查一次是否已经完成
+                        if i % 10 == 0:
+                            try:
+                                current_content = await page.content()
+                                
+                                # 检查是否注册成功
+                                if ("注册成功" in current_content or 
+                                    "登录成功" in current_content or
+                                    "欢迎使用" in current_content):
+                                    account.mark_success("Manual captcha resolution successful")
+                                    if self.on_log_message:
+                                        self.on_log_message(tr("SUCCESS: %1 - Manual captcha resolved!").replace("%1", account.username))
+                                    return True
+                                
+                                # 检查验证码是否仍然存在
+                                captcha_still_present = any(indicator in current_content for indicator in [
+                                    "quc-body", "请完成下方拼图验证后继续", "verify-slide-con", "拖动滑块完成拼图"
+                                ])
+                                
+                                if not captcha_still_present:
+                                    if self.on_log_message:
+                                        self.on_log_message(tr("Captcha disappeared - continuing verification"))
+                                    break
+                                    
+                            except Exception as check_error:
+                                self._log_debug(f"Error during captcha check: {str(check_error)}", context)
+                                continue
                     
-                    except ElementNotFoundError:
-                        raise RegistrationFailureError("Could not verify registration - no logout button found", "verification_timeout")
-                    except Exception as e:
-                        raise RegistrationFailureError(f"Registration verification failed: {str(e)}", "verification_error")
-            
-            except (AccountAlreadyExistsError, CaptchaRequiredError, RegistrationFailureError) as e:
+                    # 120秒后或验证码消失后，再次检查最终状态
+                    final_content = await page.content()
+                    if ("注册成功" in final_content or 
+                        "登录成功" in final_content or
+                        "欢迎使用" in final_content):
+                        account.mark_success("Registration completed after captcha")
+                        if self.on_log_message:
+                            self.on_log_message(tr("SUCCESS: %1 registration completed").replace("%1", account.username))
+                        return True
+                    else:
+                        account.mark_failed(f"Captcha timeout or unresolved: {message}")
+                        if self.on_log_message:
+                            self.on_log_message(tr("TIMEOUT: Manual captcha resolution not completed for %1").replace("%1", account.username))
+                        return False
+                else:
+                    # 其他未知状态
+                    if self.on_log_message:
+                        self.on_log_message(tr("UNKNOWN: %1 - %2").replace("%1", account.username).replace("%2", message))
+                    account.mark_failed(f"Unknown registration state: {message}")
+                    return False
+                        
+            except (AccountAlreadyExistsError, RegistrationFailureError) as e:
                 # These are expected error types from our detection
                 self._log_error(e, context, account)
+                account.mark_failed(str(e))
+                return False
+            except Exception as e:
+                error = RegistrationFailureError(f"Unexpected error during result verification: {str(e)}", "unexpected_error")
+                self._log_error(error, context, account)
+                account.mark_failed(str(error))
+                return False
                 account.mark_failed(str(e))
                 return False
             
@@ -1084,14 +1169,59 @@ class AutomationService:
             return False
             
         finally:
-            # Clean up page resources
-            if page:
+            # 根据账号状态决定是否关闭浏览器
+            should_close_browser = True
+            
+            # 如果是验证码相关问题，保持浏览器打开
+            if (account.notes and 
+                ("CAPTCHA_DETECTED" in account.notes or 
+                 "Captcha timeout" in account.notes or
+                 "Manual captcha resolution" in account.notes)):
+                should_close_browser = False
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Keeping browser open due to captcha"))
+            
+            if should_close_browser:
+                # 正常情况：关闭浏览器实例
+                if page:
+                    try:
+                        self._log_debug("Closing browser page after registration", context)
+                        if self.on_log_message:
+                            self.on_log_message(tr("DEBUG: Closing browser page after registration"))
+                        await page.close()
+                        self._log_debug("Browser page closed successfully", context)
+                    except Exception as e:
+                        self._log_warning(f"Error closing page: {str(e)}", context)
+                
+                # 关闭浏览器上下文和实例
                 try:
-                    self._log_debug("Closing browser page", context)
-                    await page.close()
-                    self._log_debug("Browser page closed successfully", context)
-                except Exception as e:
-                    self._log_warning(f"Error closing page: {str(e)}", context)
+                    if self.browser_context:
+                        self._log_debug("Closing browser context after registration", context)
+                        await self.browser_context.close()
+                        self.browser_context = None
+                        self._log_debug("Browser context closed and reset", context)
+                    
+                    if self.browser:
+                        self._log_debug("Closing browser instance after registration", context)
+                        await self.browser.close()
+                        self.browser = None
+                        self._log_debug("Browser instance closed and reset", context)
+                    
+                    if self.playwright:
+                        self._log_debug("Stopping playwright instance after registration", context)
+                        await self.playwright.stop()
+                        self.playwright = None
+                        self._log_debug("Playwright instance stopped and reset", context)
+                        
+                except Exception as cleanup_error:
+                    self._log_warning(f"Error during browser cleanup: {str(cleanup_error)}", context)
+                    # 强制重置
+                    self.browser_context = None
+                    self.browser = None
+                    self.playwright = None
+            else:
+                if self.on_log_message:
+                    self.on_log_message(tr("DEBUG: Browser kept open for manual captcha resolution"))
     
     # ===== SELENIUM/UNDETECTED_CHROMEDRIVER METHODS =====
     

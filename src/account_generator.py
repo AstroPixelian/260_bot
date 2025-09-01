@@ -33,7 +33,7 @@ class AccountGenerator:
             
             # Name with separators and numbers
             lambda: self.fake.first_name().lower() + "_" + str(random.randint(1000, 9999)),
-            lambda: self.fake.first_name().lower() + "." + self.fake.last_name().lower() + str(random.randint(1, 999)),
+            # lambda: self.fake.first_name().lower() + "." + self.fake.last_name().lower() + str(random.randint(1, 999)),
             lambda: self.fake.first_name().lower() + "_" + self.fake.last_name().lower() + str(random.randint(10, 99)),
             
             # Multiple word combinations
