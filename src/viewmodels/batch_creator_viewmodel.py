@@ -333,7 +333,7 @@ class BatchCreatorViewModel(QObject):
             QTimer.singleShot(500, self._process_next_account_step)
             return
         
-        # Skip accounts that are waiting for captcha (let them complete first)
+        # Skip accounts that are waiting for captcha
         if account.status == AccountStatus.WAITING_CAPTCHA:
             self._on_log_message(tr("DEBUG: Account %1 waiting for captcha, will check later").replace("%1", account.username))
             # Don't increment index, just schedule a check later

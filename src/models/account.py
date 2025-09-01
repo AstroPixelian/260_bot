@@ -51,6 +51,11 @@ class Account:
         self.status = AccountStatus.FAILED
         self.notes = notes or tr("Registration failed")
     
+    def mark_waiting_captcha(self, notes: str = ""):
+        """Mark account as waiting for captcha completion"""
+        self.status = AccountStatus.WAITING_CAPTCHA
+        self.notes = notes or tr("Waiting for captcha completion")
+    
     def reset_status(self):
         """Reset account to queued status"""
         self.status = AccountStatus.QUEUED

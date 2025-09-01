@@ -47,6 +47,9 @@ class AutomationService:
         # Backend selection
         self.backend = backend
         
+        # 定时器管理 - 保存活跃的验证码监控定时器
+        self.captcha_timers = {}  # {account_id: QTimer}
+        
         # Error logging setup
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.error_log = []  # Store errors for debugging
@@ -331,6 +334,13 @@ class AutomationService:
         # No clear result detected
         return False, "Registration result unclear"
     
+    async def _check_page_closed(self, page):
+        """检查页面是否已关闭"""
+        try:
+            return page.is_closed()
+        except Exception:
+            return True  # 如果无法检查，假设已关闭
+
     def start_batch_registration(self, accounts: list[Account]) -> bool:
         """
         Start batch registration process
@@ -420,6 +430,9 @@ class AutomationService:
         self.is_running = False
         self.is_paused = False
         self.current_account_index = 0
+        
+        # 停止所有验证码监控定时器
+        self._cleanup_captcha_timers()
         
         # Reset any processing accounts to queued
         for account in accounts:
@@ -532,6 +545,173 @@ class AutomationService:
         # 4. Handle captchas or other challenges
         # 5. Check for success/failure
         pass
+    
+    def _start_captcha_monitoring(self, account: Account, page):
+        """启动验证码监控定时器"""
+        try:
+            from PySide6.QtCore import QTimer
+            import threading
+            
+            if self.on_log_message:
+                self.on_log_message(tr("🔧 Starting captcha monitoring for {0}").format(account.username))
+                self.on_log_message(tr("🧵 Current thread: {0}").format(threading.current_thread().name))
+            
+            def create_timer():
+                """在主线程中创建QTimer"""
+                # 停止该账号的任何已存在的定时器
+                if account.id in self.captcha_timers:
+                    old_timer = self.captcha_timers[account.id]
+                    if old_timer and old_timer.isActive():
+                        old_timer.stop()
+                        if self.on_log_message:
+                            self.on_log_message(tr("🔧 Stopped existing timer for {0}").format(account.username))
+                
+                # 创建新的定时器
+                timer = QTimer()
+                self.captcha_timers[account.id] = timer
+                
+                check_count = [0]
+                max_checks = 120  # 10分钟 (120 * 5秒)
+                
+                def check_captcha():
+                    """定时检查函数 - 简化版本"""
+                    try:
+                        check_count[0] += 1
+                        
+                        if self.on_log_message:
+                            self.on_log_message(tr("🔍 Captcha check #{0} for {1}").format(check_count[0], account.username))
+                        
+                        # 检查账号状态是否已改变
+                        if account.status != AccountStatus.WAITING_CAPTCHA:
+                            if self.on_log_message:
+                                self.on_log_message(tr("✅ Account status changed to {0}, stopping timer").format(account.status.value))
+                            timer.stop()
+                            if account.id in self.captcha_timers:
+                                del self.captcha_timers[account.id]
+                            return
+                        
+                        # 检查是否超时
+                        if check_count[0] > max_checks:
+                            if self.on_log_message:
+                                self.on_log_message(tr("⏰ Captcha monitoring timeout for {0}").format(account.username))
+                            timer.stop()
+                            if account.id in self.captcha_timers:
+                                del self.captcha_timers[account.id]
+                            account.mark_failed("Captcha resolution timeout (10 minutes)")
+                            if self.on_account_complete:
+                                self.on_account_complete(account)
+                            return
+                        
+                        # 异步检查页面状态
+                        def check_page_in_background():
+                            """在后台线程中检查页面"""
+                            try:
+                                # 创建新的异步事件循环
+                                import asyncio
+                                loop = asyncio.new_event_loop()
+                                asyncio.set_event_loop(loop)
+                                
+                                try:
+                                    # 检查页面是否关闭
+                                    is_closed = loop.run_until_complete(self._check_page_closed(page))
+                                    if is_closed:
+                                        if self.on_log_message:
+                                            self.on_log_message(tr("🚪 Browser closed for {0}").format(account.username))
+                                        account.mark_failed("Browser closed during captcha")
+                                        if self.on_account_complete:
+                                            self.on_account_complete(account)
+                                        # 在主线程中停止定时器
+                                        from PySide6.QtCore import QMetaObject, Qt
+                                        QMetaObject.invokeMethod(timer, "stop", Qt.QueuedConnection)
+                                        return
+                                    
+                                    # 获取页面内容
+                                    content = loop.run_until_complete(page.content())
+                                    if not content:
+                                        if self.on_log_message:
+                                            self.on_log_message(tr("❌ Failed to get page content, will retry next time"))
+                                        return
+                                    
+                                    # 检测注册结果
+                                    success, result_message = self._detect_registration_result(content, account)
+                                    
+                                    if self.on_log_message:
+                                        self.on_log_message(tr("🔍 Detection result: success={0}, message={1}").format(success, result_message[:100]))
+                                    
+                                    if success:
+                                        # 注册成功
+                                        account.mark_success("Captcha completed successfully")
+                                        if self.on_account_complete:
+                                            self.on_account_complete(account)
+                                        if self.on_log_message:
+                                            self.on_log_message(tr("🎉 SUCCESS: {0} - Captcha completed!").format(account.username))
+                                        # 在主线程中停止定时器
+                                        from PySide6.QtCore import QMetaObject, Qt
+                                        QMetaObject.invokeMethod(timer, "stop", Qt.QueuedConnection)
+                                        return
+                                    else:
+                                        if self.on_log_message:
+                                            self.on_log_message(tr("⏳ Captcha still present, will check again in 5 seconds"))
+                                
+                                finally:
+                                    loop.close()
+                                    
+                            except Exception as e:
+                                if self.on_log_message:
+                                    self.on_log_message(tr("❌ Error during background captcha check: {0}").format(str(e)))
+                                # 不停止定时器，继续下次检查
+                        
+                        # 启动后台检查线程
+                        import threading
+                        check_thread = threading.Thread(target=check_page_in_background, daemon=True)
+                        check_thread.start()
+                        
+                    except Exception as e:
+                        if self.on_log_message:
+                            self.on_log_message(tr("❌ Error in timer callback: {0}").format(str(e)))
+                
+                # 设置定时器
+                timer.timeout.connect(check_captcha)
+                timer.start(5000)  # 5秒间隔
+                
+                if self.on_log_message:
+                    self.on_log_message(tr("✅ Captcha monitoring started for {0} (Timer ID: {1})").format(account.username, id(timer)))
+                    self.on_log_message(tr("🔧 Timer active: {0}, interval: {1}ms").format(timer.isActive(), timer.interval()))
+            
+            # 使用QTimer.singleShot确保在主线程中创建定时器
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, create_timer)
+            
+        except ImportError:
+            if self.on_log_message:
+                self.on_log_message(tr("❌ PySide6 not available, captcha monitoring disabled"))
+        except Exception as e:
+            if self.on_log_message:
+                self.on_log_message(tr("❌ Failed to start captcha monitoring: {0}").format(str(e)))
+    
+    def _cleanup_captcha_timers(self):
+        """清理所有验证码监控定时器"""
+        if not hasattr(self, 'captcha_timers'):
+            return
+            
+        try:
+            if self.on_log_message:
+                self.on_log_message(tr("🧹 Cleaning up {0} captcha timers").format(len(self.captcha_timers)))
+            
+            for account_id, timer in list(self.captcha_timers.items()):
+                if timer and timer.isActive():
+                    timer.stop()
+                    if self.on_log_message:
+                        self.on_log_message(tr("🔧 Stopped timer for account {0}").format(account_id))
+            
+            self.captcha_timers.clear()
+            
+            if self.on_log_message:
+                self.on_log_message(tr("✅ All captcha timers cleaned up"))
+                
+        except Exception as e:
+            if self.on_log_message:
+                self.on_log_message(tr("❌ Error cleaning up timers: {0}").format(str(e)))
     
     async def check_waiting_captcha_accounts(self, accounts: list[Account]) -> bool:
         """
@@ -1286,9 +1466,8 @@ class AutomationService:
                         self.on_log_message(tr("SUCCESS: %1 registered successfully").replace("%1", account.username))
                     return True
                 elif "CAPTCHA_DETECTED" in message:
-                    # 检测到验证码 - 启动简单的检查循环
-                    account.status = AccountStatus.WAITING_CAPTCHA
-                    account.notes = f"等待通过验证码: {message}"
+                    # 检测到验证码 - 使用Account模型方法设置状态
+                    account.mark_waiting_captcha(f"等待通过验证码: {message}")
                     
                     # 通知GUI更新状态
                     if self.on_account_complete:
@@ -1297,99 +1476,13 @@ class AutomationService:
                     if self.on_log_message:
                         self.on_log_message(tr("⚠️ CAPTCHA DETECTED for %1: %2").replace("%1", account.username).replace("%2", message))
                         self.on_log_message(tr("Browser will stay open - please solve manually"))
-                        self.on_log_message(tr("Starting captcha resolution monitoring (every 5 seconds)..."))
+                        self.on_log_message(tr("Starting main-thread QTimer captcha monitoring..."))
                     
-                    # 简单的检查循环 - 最多检查120次（10分钟）
-                    max_checks = 120
-                    check_interval = 5
+                    # 启动验证码监控定时器
+                    self._start_captcha_monitoring(account, page)
                     
-                    for check_count in range(max_checks):
-                        await asyncio.sleep(check_interval)
-                        
-                        if self.on_log_message:
-                            self.on_log_message(tr("🔍 Captcha check #%1 for %2").replace("%1", str(check_count + 1)).replace("%2", account.username))
-                        
-                        # 如果账号状态已经不是WAITING_CAPTCHA，说明已经被其他地方更新了
-                        if account.status != AccountStatus.WAITING_CAPTCHA:
-                            if self.on_log_message:
-                                self.on_log_message(tr("✅ Monitor stopped for %1 - status changed").replace("%1", account.username))
-                            return account.status == AccountStatus.SUCCESS
-                        
-                        try:
-                            if self.on_log_message:
-                                self.on_log_message(tr("🔍 Checking page content for %1").replace("%1", account.username))
-                            
-                            current_content = await page.content()
-                            success, current_message = self._detect_registration_result(current_content, account)
-                            
-                            if self.on_log_message:
-                                self.on_log_message(tr("🔍 Detection result: success=%1, message=%2").replace("%1", str(success)).replace("%2", current_message[:50] + "..."))
-                            
-                            if success:
-                                # 注册成功！
-                                if self.on_log_message:
-                                    self.on_log_message(tr("🎉 SUCCESS DETECTED: %1 - Registration completed!").replace("%1", account.username))
-                                
-                                account.mark_success("Manual captcha resolution successful")
-                                if self.on_account_complete:
-                                    self.on_account_complete(account)
-                                if self.on_log_message:
-                                    self.on_log_message(tr("✅ SUCCESS: %1 - Captcha resolved successfully!").replace("%1", account.username))
-                                
-                                return True
-                                
-                            elif "CAPTCHA_DETECTED" not in current_message:
-                                # 验证码消失，检查是否成功
-                                if self.on_log_message:
-                                    self.on_log_message(tr("🔍 Captcha cleared for %1 - verifying success").replace("%1", account.username))
-                                
-                                await asyncio.sleep(2)  # 等待页面稳定
-                                stable_content = await page.content()
-                                stable_success, stable_message = self._detect_registration_result(stable_content, account)
-                                
-                                if self.on_log_message:
-                                    self.on_log_message(tr("🔍 Stable check: success=%1, message=%2").replace("%1", str(stable_success)).replace("%2", stable_message[:50] + "..."))
-                                
-                                if stable_success:
-                                    # 成功！
-                                    if self.on_log_message:
-                                        self.on_log_message(tr("🎉 SUCCESS CONFIRMED: %1 - Registration verified!").replace("%1", account.username))
-                                        
-                                    account.mark_success("Manual captcha resolution - success confirmed")
-                                    if self.on_account_complete:
-                                        self.on_account_complete(account)
-                                    if self.on_log_message:
-                                        self.on_log_message(tr("✅ SUCCESS: %1 - Registration confirmed after captcha").replace("%1", account.username))
-                                    
-                                    return True
-                                
-                                # 验证码消失但未检测到成功，继续等待
-                                if self.on_log_message:
-                                    self.on_log_message(tr("⏳ Captcha cleared but success not confirmed - continuing check").replace("%1", account.username))
-                            else:
-                                # 验证码仍然存在
-                                if self.on_log_message:
-                                    self.on_log_message(tr("⏳ Captcha still present - user needs to complete it"))
-                            
-                            # 每30秒提示一次
-                            if check_count % 6 == 0 and check_count > 0:
-                                remaining_time = (max_checks - check_count) * check_interval
-                                if self.on_log_message:
-                                    self.on_log_message(tr("⏰ Still monitoring for captcha resolution... %1 seconds remaining").replace("%1", str(remaining_time)))
-                            
-                        except Exception as check_error:
-                            if self.on_log_message:
-                                self.on_log_message(tr("❌ Error checking: %1").replace("%1", str(check_error)))
-                            continue
-                    
-                    # 超时，标记为失败
-                    if self.on_log_message:
-                        self.on_log_message(tr("⏰ TIMEOUT: Captcha monitoring timeout"))
-                    account.mark_failed("Captcha monitoring timeout - user did not complete verification")
-                    if self.on_account_complete:
-                        self.on_account_complete(account)
-                    
-                    return False
+                    # 立即返回True，表示这个账号已经开始处理
+                    return True
                 else:
                     # 其他未知状态
                     if self.on_log_message:
