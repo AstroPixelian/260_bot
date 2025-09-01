@@ -24,7 +24,7 @@ from PySide6.QtGui import (
 )
 
 # Import translation manager
-from .translation_manager import init_translation_manager, get_translation_manager, tr
+from .translation_manager import tr
 
 # Import business logic
 from .models.account import Account, AccountStatus
@@ -562,6 +562,7 @@ class BatchCreatorMainWindow(QMainWindow):
         self.viewmodel.processing_status_changed.connect(self.update_button_states)
         self.viewmodel.log_message.connect(self.log_message)
         self.viewmodel.batch_processing_completed.connect(self.on_batch_complete)
+        self.viewmodel.language_changed.connect(self.on_language_changed)  # New language signal
         
         # Connect button signals
         self.btn_import.clicked.connect(self.import_csv)
@@ -723,26 +724,14 @@ class BatchCreatorMainWindow(QMainWindow):
         self.btn_language.setText("🌐")
     
     def toggle_language(self):
-        """Toggle between Chinese and English"""
-        translation_manager = get_translation_manager()
-        if translation_manager is None:
-            print("Warning: Translation manager not initialized. Trying to initialize...")
-            from PySide6.QtWidgets import QApplication
-            app = QApplication.instance()
-            if app:
-                init_translation_manager(app)
-                translation_manager = get_translation_manager()
-            
-        if translation_manager is None:
-            print("Error: Could not initialize translation manager")
-            return
-            
-        current_locale = translation_manager.get_current_locale()
-        
-        new_locale = 'en-US' if current_locale == 'zh-CN' else 'zh-CN'
-        success = translation_manager.switch_language(new_locale)
-        if success:
-            self.retranslate_ui(new_locale)
+        """Toggle between Chinese and English - delegated to ViewModel"""
+        success = self.viewmodel.toggle_language()
+        if not success:
+            QMessageBox.warning(self, "Warning", "Failed to switch language")
+    
+    def on_language_changed(self, new_locale: str):
+        """Handle language change from ViewModel"""
+        self.retranslate_ui(new_locale)
     
     def on_batch_complete(self, success_count: int, failed_count: int):
         """Handle batch processing completion"""

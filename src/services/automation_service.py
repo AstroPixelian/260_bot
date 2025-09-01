@@ -10,7 +10,6 @@ from typing import Callable, Optional, Literal
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page, PlaywrightContextManager, ViewportSize
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
 from ..models.account import Account, AccountStatus
-from ..account_generator import AccountGenerator
 from ..translation_manager import tr
 from ..exceptions import (
     AutomationError, BrowserInitializationError, ElementNotFoundError,
@@ -1059,52 +1058,6 @@ class AutomationService:
                 except Exception as e:
                     self._log_warning(f"Error closing page: {str(e)}", context)
     
-    def generate_test_accounts(self, count: int = 3) -> list[Account]:
-        """
-        Generate test accounts using AccountGenerator for registration testing
-        
-        Args:
-            count: Number of accounts to generate
-            
-        Returns:
-            List of Account objects ready for registration
-        """
-        try:
-            # Create AccountGenerator with 360.cn compatible settings
-            config = {
-                "account_generator": {
-                    "username_min_length": 8,
-                    "username_max_length": 16,
-                    "password_min_length": 12,
-                    "password_max_length": 20,
-                    "password_special_chars": "!@#$%^&*"
-                }
-            }
-            
-            generator = AccountGenerator(config)
-            accounts_data = generator.generate_accounts(count)
-            
-            # Convert to Account objects
-            accounts = []
-            for i, acc_data in enumerate(accounts_data):
-                account = Account(
-                    id=i + 1,
-                    username=acc_data["username"],
-                    password=acc_data["password"]
-                )
-                accounts.append(account)
-            
-            if self.on_log_message:
-                self.on_log_message(tr("Generated %1 test accounts for registration").replace("%1", str(count)))
-            
-            return accounts
-            
-        except Exception as e:
-            error_msg = f"Failed to generate test accounts: {str(e)}"
-            if self.on_log_message:
-                self.on_log_message(tr("ERROR: %1").replace("%1", error_msg))
-            return []
-
     # ===== SELENIUM/UNDETECTED_CHROMEDRIVER METHODS =====
     
     def _initialize_selenium_driver(self) -> bool:

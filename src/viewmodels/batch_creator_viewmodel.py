@@ -9,7 +9,8 @@ from PySide6.QtWidgets import QApplication
 from ..models.account import Account, AccountStatus
 from ..services.data_service import DataService
 from ..services.automation_service import AutomationService
-from ..translation_manager import tr
+from ..services.account_service import AccountService
+from ..translation_manager import tr, get_translation_manager, init_translation_manager
 
 
 class BatchCreatorViewModel(QObject):
@@ -23,6 +24,7 @@ class BatchCreatorViewModel(QObject):
     account_processing_started = Signal(Account)
     account_processing_completed = Signal(Account)
     batch_processing_completed = Signal(int, int)  # success_count, failed_count
+    language_changed = Signal(str)  # New signal for language changes
     
     def __init__(self):
         super().__init__()
@@ -30,6 +32,7 @@ class BatchCreatorViewModel(QObject):
         # Services
         self.data_service = DataService()
         self.automation_service = AutomationService()
+        self.account_service = AccountService()  # New account service
         
         # Timer for processing simulation
         self.processing_timer = QTimer()
@@ -230,6 +233,40 @@ class BatchCreatorViewModel(QObject):
         """Copy text to system clipboard"""
         clipboard = QApplication.clipboard()
         clipboard.setText(text)
+    
+    # Language management
+    def get_current_language(self) -> str:
+        """Get current language locale"""
+        translation_manager = get_translation_manager()
+        if translation_manager is None:
+            return "zh-CN"  # Default language
+        return translation_manager.get_current_locale()
+    
+    def toggle_language(self) -> bool:
+        """Toggle between Chinese and English"""
+        translation_manager = get_translation_manager()
+        if translation_manager is None:
+            # Try to initialize
+            app = QApplication.instance()
+            if app:
+                init_translation_manager(app)
+                translation_manager = get_translation_manager()
+        
+        if translation_manager is None:
+            self._on_log_message("Error: Could not initialize translation manager")
+            return False
+        
+        current_locale = translation_manager.get_current_locale()
+        new_locale = 'en-US' if current_locale == 'zh-CN' else 'zh-CN'
+        
+        success = translation_manager.switch_language(new_locale)
+        if success:
+            self.language_changed.emit(new_locale)
+            self._on_log_message(tr("Language switched to: %1").replace("%1", new_locale))
+        else:
+            self._on_log_message(tr("Failed to switch language"))
+        
+        return success
     
     # Private methods - automation callbacks
     def _on_account_start(self, account: Account):
