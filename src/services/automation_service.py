@@ -346,14 +346,41 @@ class AutomationService:
         
         self.is_running = True
         self.is_paused = False
-        self.current_account_index = 0
         
-        # Reset all accounts to queued status
-        for account in accounts:
-            account.reset_status()
+        # Check if this is a fresh start or resuming
+        # If all accounts are QUEUED, this is a fresh start
+        all_queued = all(account.status == AccountStatus.QUEUED for account in accounts)
         
-        if self.on_log_message:
-            self.on_log_message(tr("Started batch processing for %1 accounts").replace("%1", str(len(accounts))))
+        if all_queued:
+            # Fresh start - reset index and keep all accounts queued
+            self.current_account_index = 0
+            if self.on_log_message:
+                self.on_log_message(tr("Started fresh batch processing for %1 accounts").replace("%1", str(len(accounts))))
+        else:
+            # Resuming - find first account that needs processing (QUEUED status)
+            self.current_account_index = 0
+            for i, account in enumerate(accounts):
+                if account.status == AccountStatus.QUEUED:
+                    self.current_account_index = i
+                    break
+            else:
+                # No queued accounts found, find first non-success account
+                for i, account in enumerate(accounts):
+                    if account.status not in [AccountStatus.SUCCESS]:
+                        self.current_account_index = i
+                        # Reset this account to queued if it was processing/failed
+                        if account.status in [AccountStatus.PROCESSING, AccountStatus.FAILED]:
+                            account.reset_status()
+                        break
+                else:
+                    # All accounts are successful, nothing to do
+                    self.is_running = False
+                    if self.on_log_message:
+                        self.on_log_message(tr("All accounts already processed successfully"))
+                    return False
+            
+            if self.on_log_message:
+                self.on_log_message(tr("Resuming batch processing from account %1").replace("%1", str(self.current_account_index + 1)))
         
         return True
     

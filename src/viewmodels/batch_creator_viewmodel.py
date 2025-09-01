@@ -324,8 +324,24 @@ class BatchCreatorViewModel(QObject):
         # Get current account
         account = accounts[self.automation_service.current_account_index]
         
+        # Skip accounts that are already successfully processed
+        if account.status == AccountStatus.SUCCESS:
+            self._on_log_message(tr("DEBUG: Account %1 already successful, skipping to next").replace("%1", account.username))
+            self.automation_service.current_account_index += 1
+            self._on_log_message(tr("DEBUG: Account index incremented to: %1").replace("%1", str(self.automation_service.current_account_index)))
+            # Schedule next processing
+            QTimer.singleShot(500, self._process_next_account_step)
+            return
+        
+        # Skip accounts that are waiting for captcha (let them complete first)
+        if account.status == AccountStatus.WAITING_CAPTCHA:
+            self._on_log_message(tr("DEBUG: Account %1 waiting for captcha, will check later").replace("%1", account.username))
+            # Don't increment index, just schedule a check later
+            QTimer.singleShot(5000, self._process_next_account_step)
+            return
+        
         # 增加debug日志
-        self._on_log_message(tr("DEBUG: Processing account %1: %2").replace("%1", str(self.automation_service.current_account_index + 1)).replace("%2", account.username))
+        self._on_log_message(tr("DEBUG: Processing account %1: %2 (status: %3)").replace("%1", str(self.automation_service.current_account_index + 1)).replace("%2", account.username).replace("%3", account.status.value))
         
         # Mark account as processing
         account.mark_processing()
@@ -421,14 +437,34 @@ class BatchCreatorViewModel(QObject):
             accounts = self.data_service.get_accounts()
             self._on_log_message(tr("DEBUG: Checking if more accounts to process. Current index: %1, Total accounts: %2").replace("%1", str(self.automation_service.current_account_index)).replace("%2", str(len(accounts))))
             
-            if self.automation_service.current_account_index < len(accounts):
+            # Check if there are still accounts that need processing
+            has_pending_accounts = False
+            for i in range(self.automation_service.current_account_index, len(accounts)):
+                account = accounts[i]
+                if account.status in [AccountStatus.QUEUED, AccountStatus.FAILED]:
+                    has_pending_accounts = True
+                    # Update current index to this account if it's not the current one
+                    if i != self.automation_service.current_account_index:
+                        self.automation_service.current_account_index = i
+                        self._on_log_message(tr("DEBUG: Updated account index to: %1 (account: %2)").replace("%1", str(i)).replace("%2", account.username))
+                    break
+            
+            if has_pending_accounts:
                 # Still have accounts to process, restart the timer
-                self._on_log_message(tr("DEBUG: Restarting timer for next account registration"))
+                self._on_log_message(tr("DEBUG: Found pending accounts, restarting timer for next account registration"))
                 self.processing_timer.start(1500)
             else:
-                # No more accounts, complete batch processing
-                self._on_log_message(tr("DEBUG: No more accounts, completing batch processing"))
-                self._complete_batch_processing(accounts)
+                # No more accounts that need processing
+                # Check if there are any WAITING_CAPTCHA accounts
+                waiting_captcha_count = len([acc for acc in accounts if acc.status == AccountStatus.WAITING_CAPTCHA])
+                if waiting_captcha_count > 0:
+                    self._on_log_message(tr("DEBUG: %1 accounts still waiting for captcha completion").replace("%1", str(waiting_captcha_count)))
+                    # Don't complete batch processing yet, just wait
+                    return
+                else:
+                    # No more accounts, complete batch processing
+                    self._on_log_message(tr("DEBUG: No more accounts to process, completing batch processing"))
+                    self._complete_batch_processing(accounts)
         else:
             self._on_log_message(tr("DEBUG: Not resuming processing - conditions not met"))
     
