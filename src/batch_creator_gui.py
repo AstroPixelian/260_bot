@@ -46,6 +46,7 @@ class StatusIcon(QWidget):
         colors = {
             AccountStatus.QUEUED: QColor("#666666"),
             AccountStatus.PROCESSING: QColor("#0078D4"), 
+            AccountStatus.WAITING_CAPTCHA: QColor("#FFA500"),  # Orange for waiting captcha
             AccountStatus.SUCCESS: QColor("#107C10"),
             AccountStatus.FAILED: QColor("#D83B01")
         }
@@ -59,6 +60,11 @@ class StatusIcon(QWidget):
             painter.drawEllipse(4, 4, 8, 8)
         elif self.status == AccountStatus.PROCESSING:
             painter.drawEllipse(2, 2, 12, 12)
+        elif self.status == AccountStatus.WAITING_CAPTCHA:
+            # Draw exclamation mark for captcha waiting
+            painter.setPen(QPen(color, 2))
+            painter.drawLine(8, 3, 8, 10)  # Vertical line
+            painter.drawRect(7, 12, 2, 2)  # Dot
         elif self.status == AccountStatus.SUCCESS:
             painter.setPen(QPen(color, 3))
             painter.drawLine(3, 8, 7, 12)
@@ -630,6 +636,7 @@ class BatchCreatorMainWindow(QMainWindow):
             status_colors = {
                 AccountStatus.QUEUED: "#666666",
                 AccountStatus.PROCESSING: "#0078D4",
+                AccountStatus.WAITING_CAPTCHA: "#FFA500",  # Orange for waiting captcha
                 AccountStatus.SUCCESS: "#107C10", 
                 AccountStatus.FAILED: "#D83B01"
             }

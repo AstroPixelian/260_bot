@@ -273,6 +273,10 @@ File: %1</source>
         <translation>处理中</translation>
     </message>
     <message>
+        <source>Waiting_Captcha</source>
+        <translation>等待通过验证码</translation>
+    </message>
+    <message>
         <source>Success</source>
         <translation>成功</translation>
     </message>

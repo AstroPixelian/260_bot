@@ -273,6 +273,10 @@ File: %1</translation>
         <translation>Processing</translation>
     </message>
     <message>
+        <source>Waiting_Captcha</source>
+        <translation>Waiting for Captcha</translation>
+    </message>
+    <message>
         <source>Success</source>
         <translation>Success</translation>
     </message>

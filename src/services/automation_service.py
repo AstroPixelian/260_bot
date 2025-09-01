@@ -1057,57 +1057,139 @@ class AutomationService:
                         self.on_log_message(tr("SUCCESS: %1 registered successfully").replace("%1", account.username))
                     return True
                 elif "CAPTCHA_DETECTED" in message:
-                    # 检测到验证码
+                    # 检测到验证码 - 设置等待验证码状态
+                    account.status = AccountStatus.WAITING_CAPTCHA
+                    account.notes = f"等待通过验证码: {message}"
+                    
+                    # 通知GUI更新状态
+                    if self.on_account_complete:
+                        self.on_account_complete(account)
+                    
                     if self.on_log_message:
                         self.on_log_message(tr("⚠️ CAPTCHA DETECTED for %1: %2").replace("%1", account.username).replace("%2", message))
                         self.on_log_message(tr("Browser will stay open - please solve manually"))
-                        self.on_log_message(tr("Waiting 120 seconds for manual captcha resolution..."))
+                        self.on_log_message(tr("Checking every 5 seconds for captcha resolution..."))
                     
-                    # 给用户2分钟时间处理验证码
-                    for i in range(120):
-                        await asyncio.sleep(1)
+                    # 每5秒检查一次验证码状态，最多检查120次（10分钟）
+                    max_checks = 120
+                    check_interval = 5
+                    
+                    for check_count in range(max_checks):
+                        await asyncio.sleep(check_interval)
                         
-                        # 每10秒检查一次是否已经完成
-                        if i % 10 == 0:
-                            try:
-                                current_content = await page.content()
+                        try:
+                            current_content = await page.content()
+                            
+                            # 使用精确的检测方法检查当前状态
+                            success, current_message = self._detect_registration_result(current_content, account)
+                            
+                            if success:
+                                # 注册成功
+                                account.mark_success("Manual captcha resolution successful")
+                                if self.on_account_complete:
+                                    self.on_account_complete(account)
+                                if self.on_log_message:
+                                    self.on_log_message(tr("SUCCESS: %1 - Manual captcha resolved!").replace("%1", account.username))
+                                return True
+                            elif "CAPTCHA_DETECTED" not in current_message:
+                                # 验证码框已消失 - 需要同时检查账号注册成功条件
+                                if self.on_log_message:
+                                    self.on_log_message(tr("Captcha cleared - verifying registration success for %1").replace("%1", account.username))
                                 
-                                # 检查是否注册成功
-                                if ("注册成功" in current_content or 
-                                    "登录成功" in current_content or
-                                    "欢迎使用" in current_content):
-                                    account.mark_success("Manual captcha resolution successful")
-                                    if self.on_log_message:
-                                        self.on_log_message(tr("SUCCESS: %1 - Manual captcha resolved!").replace("%1", account.username))
-                                    return True
+                                # 等待页面稳定，确保状态更新完成
+                                await asyncio.sleep(2)
                                 
-                                # 检查验证码是否仍然存在
-                                captcha_still_present = any(indicator in current_content for indicator in [
-                                    "quc-body", "请完成下方拼图验证后继续", "verify-slide-con", "拖动滑块完成拼图"
-                                ])
-                                
-                                if not captcha_still_present:
-                                    if self.on_log_message:
-                                        self.on_log_message(tr("Captcha disappeared - continuing verification"))
-                                    break
+                                try:
+                                    # 再次确认页面状态
+                                    stable_content = await page.content()
+                                    stable_success, stable_message = self._detect_registration_result(stable_content, account)
                                     
-                            except Exception as check_error:
-                                self._log_debug(f"Error during captcha check: {str(check_error)}", context)
-                                continue
+                                    # 条件1: 验证码框消失 ✓ (已确认)
+                                    # 条件2: 检查账号注册成功条件
+                                    if stable_success:
+                                        # 两个条件都满足：验证码消失 + 注册成功检测通过
+                                        account.mark_success("Manual captcha resolution - both conditions met")
+                                        if self.on_account_complete:
+                                            self.on_account_complete(account)
+                                        if self.on_log_message:
+                                            self.on_log_message(tr("SUCCESS: %1 - Captcha cleared AND registration confirmed").replace("%1", account.username))
+                                        return True
+                                    elif "CAPTCHA_DETECTED" in stable_message:
+                                        # 验证码重新出现，继续等待
+                                        if self.on_log_message:
+                                            self.on_log_message(tr("Captcha reappeared for %1 - continuing verification").replace("%1", account.username))
+                                        continue
+                                    else:
+                                        # 验证码消失但注册成功条件未满足，继续等待一段时间
+                                        if self.on_log_message:
+                                            self.on_log_message(tr("Captcha cleared but registration success not yet confirmed for %1 - waiting").replace("%1", account.username))
+                                        # 继续检查几轮，给页面更多时间更新状态
+                                        continue
+                                        
+                                except Exception as stable_check_error:
+                                    # 检查出错，继续等待
+                                    self._log_debug(f"Error during stable page check: {str(stable_check_error)}", context)
+                                    if self.on_log_message:
+                                        self.on_log_message(tr("Check error after captcha cleared for %1 - continuing").replace("%1", account.username))
+                                    continue
+                            else:
+                                # 验证码仍然存在，继续等待
+                                if check_count % 6 == 0:  # 每30秒提示一次
+                                    remaining_time = (max_checks - check_count) * check_interval
+                                    if self.on_log_message:
+                                        self.on_log_message(tr("Still waiting for captcha resolution... %1 seconds remaining").replace("%1", str(remaining_time)))
+                                    
+                        except Exception as check_error:
+                            self._log_debug(f"Error during captcha check: {str(check_error)}", context)
+                            continue
                     
-                    # 120秒后或验证码消失后，再次检查最终状态
-                    final_content = await page.content()
-                    if ("注册成功" in final_content or 
-                        "登录成功" in final_content or
-                        "欢迎使用" in final_content):
-                        account.mark_success("Registration completed after captcha")
+                    # 验证码检查循环结束后，进行最终状态检查
+                    # 注意：如果到达这里，说明验证码可能一直存在或者检查出现异常
+                    if self.on_log_message:
+                        self.on_log_message(tr("Performing final registration status check for %1").replace("%1", account.username))
+                    
+                    # 进行最终确认检查
+                    try:
+                        await asyncio.sleep(2)  # 等待页面稳定
+                        final_content = await page.content()
+                        final_success, final_message = self._detect_registration_result(final_content, account)
+                        
+                        if final_success:
+                            # 明确检测到成功状态
+                            account.mark_success("Registration completed after captcha resolution")
+                            if self.on_account_complete:
+                                self.on_account_complete(account)
+                            if self.on_log_message:
+                                self.on_log_message(tr("SUCCESS: %1 registration completed after captcha").replace("%1", account.username))
+                            return True
+                        elif "CAPTCHA_DETECTED" not in final_message:
+                            # 验证码已消失，但需要检查注册成功条件
+                            if self.on_log_message:
+                                self.on_log_message(tr("Final check: Captcha cleared but registration success not confirmed for %1").replace("%1", account.username))
+                            # 验证码消失但注册成功条件未满足，判定为失败
+                            account.mark_failed("Captcha cleared but registration success not confirmed")
+                            if self.on_account_complete:
+                                self.on_account_complete(account)
+                            if self.on_log_message:
+                                self.on_log_message(tr("FAILED: %1 - Captcha cleared but registration not confirmed").replace("%1", account.username))
+                            return False
+                        else:
+                            # 验证码仍然存在，判定为超时失败
+                            account.mark_failed(f"Captcha resolution timeout: {final_message}")
+                            if self.on_account_complete:
+                                self.on_account_complete(account)
+                            if self.on_log_message:
+                                self.on_log_message(tr("TIMEOUT: Captcha still present after timeout for %1").replace("%1", account.username))
+                            return False
+                                
+                    except Exception as final_check_error:
+                        # 最终检查出错，无法确定状态
+                        error_msg = f"Final check error: {str(final_check_error)}"
+                        account.mark_failed(error_msg)
+                        if self.on_account_complete:
+                            self.on_account_complete(account)
                         if self.on_log_message:
-                            self.on_log_message(tr("SUCCESS: %1 registration completed").replace("%1", account.username))
-                        return True
-                    else:
-                        account.mark_failed(f"Captcha timeout or unresolved: {message}")
-                        if self.on_log_message:
-                            self.on_log_message(tr("TIMEOUT: Manual captcha resolution not completed for %1").replace("%1", account.username))
+                            self.on_log_message(tr("ERROR: Final status check failed for %1").replace("%1", account.username))
                         return False
                 else:
                     # 其他未知状态

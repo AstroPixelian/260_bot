@@ -11,6 +11,7 @@ class AccountStatus(Enum):
     """Account registration status"""
     QUEUED = "Queued"
     PROCESSING = "Processing" 
+    WAITING_CAPTCHA = "Waiting_Captcha"
     SUCCESS = "Success"
     FAILED = "Failed"
     
