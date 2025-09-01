@@ -94,7 +94,7 @@ class BatchCreatorViewModel(QObject):
     
     def generate_random_accounts(self, count: int) -> bool:
         """
-        Generate random test accounts
+        Generate random test accounts using AccountService
         
         Args:
             count: Number of accounts to generate
@@ -107,10 +107,16 @@ class BatchCreatorViewModel(QObject):
                 self._on_log_message(tr("Invalid account count: %1").replace("%1", str(count)))
                 return False
             
-            generated_count = self.data_service.generate_random_accounts(count)
+            # Use AccountService for better account generation
+            generated_accounts = self.account_service.generate_random_accounts(count)
+            
+            # Add generated accounts to DataService for storage
+            self.data_service.add_accounts(generated_accounts)
+            
+            # Emit signals to update UI
             self.accounts_changed.emit()
             self.statistics_changed.emit()
-            self._on_log_message(tr("Generated %1 random accounts").replace("%1", str(generated_count)))
+            self._on_log_message(tr("Generated %1 random accounts with realistic usernames").replace("%1", str(len(generated_accounts))))
             return True
         
         except Exception as e:
