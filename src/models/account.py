@@ -11,7 +11,7 @@ class AccountStatus(Enum):
     """Account registration status"""
     QUEUED = "Queued"
     PROCESSING = "Processing" 
-    WAITING_CAPTCHA = "Waiting_Captcha"
+    CAPTCHA_PENDING = "Captcha_Pending"
     SUCCESS = "Success"
     FAILED = "Failed"
     
@@ -53,7 +53,7 @@ class Account:
     
     def mark_waiting_captcha(self, notes: str = ""):
         """Mark account as waiting for captcha completion"""
-        self.status = AccountStatus.WAITING_CAPTCHA
+        self.status = AccountStatus.CAPTCHA_PENDING
         self.notes = notes or tr("Waiting for captcha completion")
     
     def reset_status(self):

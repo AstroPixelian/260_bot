@@ -45,7 +45,7 @@ class DataService:
         success = len([acc for acc in self.accounts if acc.status == AccountStatus.SUCCESS])
         failed = len([acc for acc in self.accounts if acc.status == AccountStatus.FAILED])
         processing = len([acc for acc in self.accounts if acc.status == AccountStatus.PROCESSING])
-        waiting_captcha = len([acc for acc in self.accounts if acc.status == AccountStatus.WAITING_CAPTCHA])
+        waiting_captcha = len([acc for acc in self.accounts if acc.status == AccountStatus.CAPTCHA_PENDING])
         queued = len([acc for acc in self.accounts if acc.status == AccountStatus.QUEUED])
         
         return {

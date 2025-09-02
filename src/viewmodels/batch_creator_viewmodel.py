@@ -10,6 +10,7 @@ from ..models.account import Account, AccountStatus
 from ..services.data_service import DataService
 from ..services.automation_service import AutomationService
 from ..services.account_service import AccountService
+from ..services.captcha_service import CaptchaService
 from ..translation_manager import tr, get_translation_manager, init_translation_manager
 
 
@@ -26,6 +27,11 @@ class BatchCreatorViewModel(QObject):
     batch_processing_completed = Signal(int, int)  # success_count, failed_count
     language_changed = Signal(str)  # New signal for language changes
     
+    # Captcha-related signals for MVVM communication
+    captcha_detected = Signal(Account, str)  # account, message
+    captcha_resolved = Signal(Account, str)  # account, message  
+    captcha_timeout = Signal(Account, str)   # account, message
+    
     def __init__(self):
         super().__init__()
         
@@ -33,6 +39,7 @@ class BatchCreatorViewModel(QObject):
         self.data_service = DataService()
         self.automation_service = AutomationService()
         self.account_service = AccountService()  # New account service
+        self.captcha_service = CaptchaService()  # New captcha service for MVVM compliance
         
         # Timer for processing simulation
         self.processing_timer = QTimer()
@@ -43,6 +50,14 @@ class BatchCreatorViewModel(QObject):
             on_account_start=self._on_account_start,
             on_account_complete=self._on_account_complete,
             on_batch_complete=self._on_batch_complete,
+            on_log_message=self._on_log_message
+        )
+        
+        # Setup captcha service callbacks (MVVM pattern)
+        self.captcha_service.set_callbacks(
+            on_captcha_detected=self._on_captcha_detected,
+            on_captcha_resolved=self._on_captcha_resolved,
+            on_captcha_timeout=self._on_captcha_timeout,
             on_log_message=self._on_log_message
         )
         
@@ -334,7 +349,7 @@ class BatchCreatorViewModel(QObject):
             return
         
         # Skip accounts that are waiting for captcha
-        if account.status == AccountStatus.WAITING_CAPTCHA:
+        if account.status == AccountStatus.CAPTCHA_PENDING:
             self._on_log_message(tr("DEBUG: Account %1 waiting for captcha, will check later").replace("%1", account.username))
             # Don't increment index, just schedule a check later
             QTimer.singleShot(5000, self._process_next_account_step)
@@ -455,8 +470,8 @@ class BatchCreatorViewModel(QObject):
                 self.processing_timer.start(1500)
             else:
                 # No more accounts that need processing
-                # Check if there are any WAITING_CAPTCHA accounts
-                waiting_captcha_count = len([acc for acc in accounts if acc.status == AccountStatus.WAITING_CAPTCHA])
+                # Check if there are any CAPTCHA_PENDING accounts
+                waiting_captcha_count = len([acc for acc in accounts if acc.status == AccountStatus.CAPTCHA_PENDING])
                 if waiting_captcha_count > 0:
                     self._on_log_message(tr("DEBUG: %1 accounts still waiting for captcha completion").replace("%1", str(waiting_captcha_count)))
                     # Don't complete batch processing yet, just wait
@@ -487,11 +502,70 @@ class BatchCreatorViewModel(QObject):
         self.processing_status_changed.emit()
         self.batch_processing_completed.emit(success_count, failed_count)
     
+    # MVVM Captcha Service Integration Methods
+    
+    def manual_captcha_check(self, account_id: int):
+        """
+        Perform manual captcha check for specified account (MVVM ViewModel method).
+        Called by GUI button click through signal/slot mechanism.
+        """
+        account = self.data_service.get_account_by_id(account_id)
+        if not account:
+            self._on_log_message(tr("ERROR: Account not found for manual captcha check"))
+            return
+        
+        if account.status != AccountStatus.CAPTCHA_PENDING:
+            self._on_log_message(tr("Account %1 is not waiting for captcha").replace("%1", account.username))
+            return
+        
+        self._on_log_message(tr("🔍 Manual captcha check initiated for %1").replace("%1", account.username))
+        
+        # NOTE: In a real implementation, this would need access to the Playwright page
+        # For now, we'll simulate the manual check or integrate with automation service
+        # This is a placeholder for the actual implementation
+        self._on_log_message(tr("Manual captcha check feature requires integration with active browser page"))
+    
+    def _on_captcha_detected(self, account: Account, message: str):
+        """Handle captcha detection callback from CaptchaService"""
+        self._on_log_message(tr("⚠️ CAPTCHA DETECTED for %1: %2").replace("%1", account.username).replace("%2", message))
+        
+        # Update UI through signals (MVVM pattern)
+        self.captcha_detected.emit(account, message)
+        self.accounts_changed.emit()
+        self.statistics_changed.emit()
+    
+    def _on_captcha_resolved(self, account: Account, message: str):
+        """Handle captcha resolution callback from CaptchaService"""
+        self._on_log_message(tr("✅ CAPTCHA RESOLVED for %1: %2").replace("%1", account.username).replace("%2", message))
+        
+        # Update UI through signals (MVVM pattern)
+        self.captcha_resolved.emit(account, message)
+        self.accounts_changed.emit()
+        self.statistics_changed.emit()
+        
+        # Continue processing next account
+        QTimer.singleShot(1000, self._process_next_account_step)
+    
+    def _on_captcha_timeout(self, account: Account, message: str):
+        """Handle captcha timeout callback from CaptchaService"""
+        self._on_log_message(tr("⏰ CAPTCHA TIMEOUT for %1: %2").replace("%1", account.username).replace("%2", message))
+        
+        # Update UI through signals (MVVM pattern)
+        self.captcha_timeout.emit(account, message)
+        self.accounts_changed.emit()
+        self.statistics_changed.emit()
+        
+        # Continue processing next account
+        QTimer.singleShot(1000, self._process_next_account_step)
+    
     # Cleanup
     def cleanup(self):
         """Cleanup resources when application closes"""
         if self.processing_timer.isActive():
             self.processing_timer.stop()
+        
+        # Cleanup captcha service monitoring
+        self.captcha_service.stop_all_monitoring()
         
         if self.automation_service.is_running:
             self.automation_service.stop_registration(self.data_service.get_accounts())

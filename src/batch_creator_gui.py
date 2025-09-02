@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QGridLayout, QPushButton, QTableWidget, QTableWidgetItem, 
     QTextEdit, QProgressBar, QLabel, QFrame, QHeaderView,
     QFileDialog, QMessageBox, QInputDialog, QStatusBar,
-    QMenuBar, QMenu
+    QMenuBar, QMenu, QSystemTrayIcon
 )
 from PySide6.QtCore import Qt, QSize, QRect, QCoreApplication
 from PySide6.QtGui import (
@@ -46,7 +46,7 @@ class StatusIcon(QWidget):
         colors = {
             AccountStatus.QUEUED: QColor("#666666"),
             AccountStatus.PROCESSING: QColor("#0078D4"), 
-            AccountStatus.WAITING_CAPTCHA: QColor("#FFA500"),  # Orange for waiting captcha
+            AccountStatus.CAPTCHA_PENDING: QColor("#FFA500"),  # Orange for waiting captcha
             AccountStatus.SUCCESS: QColor("#107C10"),
             AccountStatus.FAILED: QColor("#D83B01")
         }
@@ -60,7 +60,7 @@ class StatusIcon(QWidget):
             painter.drawEllipse(4, 4, 8, 8)
         elif self.status == AccountStatus.PROCESSING:
             painter.drawEllipse(2, 2, 12, 12)
-        elif self.status == AccountStatus.WAITING_CAPTCHA:
+        elif self.status == AccountStatus.CAPTCHA_PENDING:
             # Draw exclamation mark for captcha waiting
             painter.setPen(QPen(color, 2))
             painter.drawLine(8, 3, 8, 10)  # Vertical line
@@ -274,6 +274,9 @@ class BatchCreatorMainWindow(QMainWindow):
         self.btn_export.setText(tr("💾 Export Results"))
         self.btn_export.setToolTip(tr("Export results to CSV file"))
         
+        self.btn_manual_captcha.setText(tr("🔍 Manual Captcha Check"))
+        self.btn_manual_captcha.setToolTip(tr("Manually check if captcha has been completed"))
+        
         # Update progress labels
         self.lbl_total_caption.setText(tr("Total:"))
         self.lbl_success_caption.setText(tr("Success:"))
@@ -340,6 +343,12 @@ class BatchCreatorMainWindow(QMainWindow):
         self.btn_export = QPushButton(tr("💾 Export Results"))
         self.btn_export.setToolTip(tr("Export results to CSV file"))
         layout.addWidget(self.btn_export)
+        
+        # Manual Captcha Detection button (Phase 2 feature)
+        self.btn_manual_captcha = QPushButton(tr("🔍 Manual Captcha Check"))
+        self.btn_manual_captcha.setToolTip(tr("Manually check if captcha has been completed"))
+        self.btn_manual_captcha.setEnabled(False)  # Initially disabled
+        layout.addWidget(self.btn_manual_captcha)
         
         # Add stretch to push language button to the right
         layout.addStretch()
@@ -571,6 +580,11 @@ class BatchCreatorMainWindow(QMainWindow):
         self.viewmodel.batch_processing_completed.connect(self.on_batch_complete)
         self.viewmodel.language_changed.connect(self.on_language_changed)  # New language signal
         
+        # Connect captcha-related signals (MVVM View layer integration)
+        self.viewmodel.captcha_detected.connect(self.on_captcha_detected)
+        self.viewmodel.captcha_resolved.connect(self.on_captcha_resolved)
+        self.viewmodel.captcha_timeout.connect(self.on_captcha_timeout)
+        
         # Connect button signals
         self.btn_import.clicked.connect(self.import_csv)
         self.btn_generate.clicked.connect(self.generate_accounts)
@@ -578,6 +592,7 @@ class BatchCreatorMainWindow(QMainWindow):
         self.btn_pause.clicked.connect(self.pause_processing)
         self.btn_stop.clicked.connect(self.stop_processing)
         self.btn_export.clicked.connect(self.export_results)
+        self.btn_manual_captcha.clicked.connect(self.manual_captcha_check)
         self.btn_language.clicked.connect(self.toggle_language)
     
     def update_button_states(self):
@@ -585,12 +600,17 @@ class BatchCreatorMainWindow(QMainWindow):
         has_accounts = len(self.viewmodel.accounts) > 0
         is_processing = self.viewmodel.is_processing
         
+        # Check if there are any accounts waiting for captcha
+        has_captcha_pending = any(account.status == AccountStatus.CAPTCHA_PENDING 
+                                for account in self.viewmodel.accounts)
+        
         self.btn_import.setEnabled(not is_processing)
         self.btn_generate.setEnabled(not is_processing)
         self.btn_start.setEnabled(has_accounts and not is_processing)
         self.btn_pause.setEnabled(is_processing)
         self.btn_stop.setEnabled(is_processing)
         self.btn_export.setEnabled(has_accounts)
+        self.btn_manual_captcha.setEnabled(has_captcha_pending and is_processing)
         
         # Update pause button text
         if self.viewmodel.is_paused:
@@ -636,7 +656,7 @@ class BatchCreatorMainWindow(QMainWindow):
             status_colors = {
                 AccountStatus.QUEUED: "#666666",
                 AccountStatus.PROCESSING: "#0078D4",
-                AccountStatus.WAITING_CAPTCHA: "#FFA500",  # Orange for waiting captcha
+                AccountStatus.CAPTCHA_PENDING: "#FFA500",  # Orange for waiting captcha
                 AccountStatus.SUCCESS: "#107C10", 
                 AccountStatus.FAILED: "#D83B01"
             }
@@ -737,6 +757,13 @@ class BatchCreatorMainWindow(QMainWindow):
         if not success:
             QMessageBox.warning(self, "Warning", "Failed to switch language")
     
+    def manual_captcha_check(self):
+        """Manual captcha check - delegated to ViewModel (MVVM View layer)"""
+        # MVVM compliant: Only emit signal to ViewModel, no business logic
+        success = self.viewmodel.manual_captcha_check()
+        if not success:
+            QMessageBox.information(self, tr("Information"), tr("No accounts are waiting for captcha completion"))
+    
     def on_language_changed(self, new_locale: str):
         """Handle language change from ViewModel"""
         self.retranslate_ui(new_locale)
@@ -745,6 +772,58 @@ class BatchCreatorMainWindow(QMainWindow):
         """Handle batch processing completion"""
         QMessageBox.information(self, tr("Processing Complete"), 
             tr("Batch processing completed!\n\nSuccess: %1\nFailed: %2").replace("%1", str(success_count)).replace("%2", str(failed_count)))
+    
+    def on_captcha_detected(self, account, message: str):
+        """Handle captcha detection from ViewModel (MVVM View layer)"""
+        # Update UI display for captcha waiting status (响应ViewModel信号)
+        self.update_accounts_display()
+        
+        # Show friendly captcha waiting prompt with multi-language support
+        friendly_message = tr("🔍 CAPTCHA detected for %1. Please complete the captcha in the browser.\n"
+                             "System will automatically check every 5 seconds.").replace("%1", account.username)
+        self.log_message.emit(friendly_message)
+        
+        # Optional: Show system tray notification if available
+        if hasattr(self, 'tray_icon') and self.tray_icon:
+            self.tray_icon.showMessage(
+                tr("Captcha Required"), 
+                tr("Please complete captcha for %1").replace("%1", account.username),
+                QSystemTrayIcon.Information, 5000
+            )
+    
+    def on_captcha_resolved(self, account, message: str):
+        """Handle captcha resolution from ViewModel (MVVM View layer)"""
+        # Update UI display for successful captcha completion (响应ViewModel信号)
+        self.update_accounts_display()
+        
+        # Show success message with multi-language support
+        success_message = tr("🎉 CAPTCHA completed for %1! Continuing registration...").replace("%1", account.username)
+        self.log_message.emit(success_message)
+        
+        # Optional: Show system tray notification if available
+        if hasattr(self, 'tray_icon') and self.tray_icon:
+            self.tray_icon.showMessage(
+                tr("Captcha Completed"), 
+                tr("Captcha completed for %1").replace("%1", account.username),
+                QSystemTrayIcon.Information, 3000
+            )
+    
+    def on_captcha_timeout(self, account, message: str):
+        """Handle captcha timeout from ViewModel (MVVM View layer)"""
+        # Update UI display for failed captcha timeout (响应ViewModel信号)
+        self.update_accounts_display()
+        
+        # Show timeout warning with multi-language support
+        timeout_message = tr("⏰ CAPTCHA timeout for %1 after 60 seconds. Account marked as failed.").replace("%1", account.username)
+        self.log_message.emit(timeout_message)
+        
+        # Optional: Show system tray notification if available
+        if hasattr(self, 'tray_icon') and self.tray_icon:
+            self.tray_icon.showMessage(
+                tr("Captcha Timeout"), 
+                tr("Captcha timeout for %1").replace("%1", account.username),
+                QSystemTrayIcon.Warning, 5000
+            )
     
     def closeEvent(self, event):
         """Handle application close event"""
