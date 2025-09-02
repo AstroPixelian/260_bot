@@ -1,0 +1,58 @@
+# Quality Gate Decision for Story 3.2
+schema: 1
+story: "3.2"
+story_title: "智能验证码检测与用户协助系统"
+gate: "CONCERNS" # Phase 2 incomplete, missing manual detection integration
+status_reason: "Phase 1 excellently implemented with robust MVVM architecture, but Phase 2 manual detection requires completion."
+reviewer: "Quinn (Test Architect)"
+updated: "2025-09-02T10:45:00Z"
+
+# Always present but only active when WAIVED
+waiver: { active: false }
+
+# Issues identified during comprehensive review
+top_issues:
+  - id: "IMPL-001"
+    severity: medium
+    finding: "Phase 2 manual detection button present in GUI but missing ViewModel integration"
+    suggested_action: "Complete Task 7-9: ViewModel signal/slot integration for manual captcha detection"
+  - id: "TEST-002"  
+    severity: low
+    finding: "Integration tests exist but Phase 2 functionality not covered"
+    suggested_action: "Add integration tests for manual detection workflow once implementation complete"
+
+# Extended evidence from comprehensive review
+quality_score: 82  # High quality Phase 1 implementation with solid architecture
+
+evidence:
+  tests_reviewed: 13
+  risks_identified: 2
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6, 7, 8]  # Phase 1 ACs fully covered + GUI button (AC 8)
+    ac_gaps: [9, 10, 11, 12]  # Phase 2 manual detection logic (ACs 9-12)
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: "CAPTCHA_PENDING status protects against registration bypass"
+  performance:
+    status: PASS
+    notes: "5-second polling optimizes UI responsiveness vs system load"
+  reliability:
+    status: PASS
+    notes: "60-second timeout and dual-condition validation ensure robust captcha handling"
+  maintainability:
+    status: PASS
+    notes: "Excellent MVVM architecture compliance with clear separation of concerns"
+
+recommendations:
+  immediate:  # Must complete before marking story Done
+    - action: "Complete manual detection ViewModel integration (Tasks 7-9)"
+      refs: ["src/viewmodels/batch_creator_viewmodel.py", "src/services/captcha_service.py"]
+    - action: "Add integration tests for Phase 2 manual detection workflow"
+      refs: ["tests/integration/"]
+  future:  # Nice-to-have improvements
+    - action: "Consider adding configurable polling intervals for power users"
+      refs: ["src/services/captcha_service.py:58"]
+    - action: "Add metrics collection for captcha detection success rates"
+      refs: ["src/services/captcha_service.py"]
