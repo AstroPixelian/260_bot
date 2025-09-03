@@ -504,26 +504,44 @@ class BatchCreatorViewModel(QObject):
     
     # MVVM Captcha Service Integration Methods
     
-    def manual_captcha_check(self, account_id: int):
+    def manual_captcha_check(self) -> bool:
         """
-        Perform manual captcha check for specified account (MVVM ViewModel method).
+        Perform manual captcha check for any account waiting for captcha (MVVM ViewModel method).
         Called by GUI button click through signal/slot mechanism.
-        """
-        account = self.data_service.get_account_by_id(account_id)
-        if not account:
-            self._on_log_message(tr("ERROR: Account not found for manual captcha check"))
-            return
         
-        if account.status != AccountStatus.CAPTCHA_PENDING:
-            self._on_log_message(tr("Account %1 is not waiting for captcha").replace("%1", account.username))
-            return
+        Returns:
+            bool: True if manual check was performed, False if no accounts waiting
+        """
+        # Find accounts waiting for captcha completion
+        captcha_pending_accounts = [acc for acc in self.accounts if acc.status == AccountStatus.CAPTCHA_PENDING]
+        
+        if not captcha_pending_accounts:
+            self._on_log_message(tr("No accounts are currently waiting for captcha completion"))
+            return False
+        
+        # For now, check the first account waiting for captcha
+        # In future, could implement UI to select which account to check
+        account = captcha_pending_accounts[0]
         
         self._on_log_message(tr("🔍 Manual captcha check initiated for %1").replace("%1", account.username))
         
-        # NOTE: In a real implementation, this would need access to the Playwright page
-        # For now, we'll simulate the manual check or integrate with automation service
-        # This is a placeholder for the actual implementation
-        self._on_log_message(tr("Manual captcha check feature requires integration with active browser page"))
+        # Call CaptchaService manual check if we have access to the browser page
+        if hasattr(self.automation_service, 'current_page') and self.automation_service.current_page:
+            try:
+                # Use CaptchaService manual_check method
+                success = self.captcha_service.manual_check(account, self.automation_service.current_page)
+                if success:
+                    self._on_log_message(tr("✅ Manual captcha check successful for %1").replace("%1", account.username))
+                else:
+                    self._on_log_message(tr("ℹ️ Manual captcha check: captcha still pending for %1").replace("%1", account.username))
+                return True
+            except Exception as e:
+                self._on_log_message(tr("❌ Manual captcha check failed: %1").replace("%1", str(e)))
+                return False
+        else:
+            # Fallback: just log that manual check was requested
+            self._on_log_message(tr("Manual captcha check requested - browser page not available for immediate check"))
+            return True
     
     def _on_captcha_detected(self, account: Account, message: str):
         """Handle captcha detection callback from CaptchaService"""
