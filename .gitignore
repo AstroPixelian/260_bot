@@ -533,3 +533,9 @@ $RECYCLE.BIN/
 /test/rc_project.py
 /rc_project.py
 /project.json
+
+# Project specific
+registration_results_*.csv
+registration_results_*.csv.lock
+build_pyinstaller.py
+test_windows_package.py

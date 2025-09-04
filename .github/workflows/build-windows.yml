@@ -4,9 +4,13 @@ on:
   push:
     branches: [ main ]
     tags: [ 'v*' ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:  # 允许手动触发
+    inputs:
+      debug:
+        description: 'Enable debug output'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build-windows:
@@ -16,44 +20,123 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
       with:
         python-version: '3.12'
         
     - name: Install uv
       uses: astral-sh/setup-uv@v3
       
-    - name: Install dependencies
+    - name: Cache Python dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/uv
+        key: ${{ runner.os }}-uv-${{ hashFiles('**/pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-uv-
+          
+    - name: Install Python dependencies
       run: |
         uv sync --all-extras
-        uv add nuitka
+        uv add nuitka>=2.7.13
         
     - name: Install Playwright browsers
       run: |
         uv run playwright install chromium
         
-    - name: Build executable
+    - name: Verify environment
       run: |
+        uv run python --version
+        uv run python -c "import playwright; print('Playwright version:', playwright.__version__)"
+        uv run python -c "import rich; print('Rich version:', rich.__version__)"
+        uv run python -c "import nuitka; print('Nuitka version:', nuitka.__version__)"
+        
+    - name: Test application before build
+      run: |
+        echo "Testing basic imports..."
+        uv run python -c "from src.rich_cli import main; print('✅ Rich CLI imports successfully')"
+        
+    - name: Build Windows executable
+      run: |
+        echo "🚀 Starting Nuitka build..."
         uv run python build_exe.py
         
-    - name: Upload artifacts
+    - name: Verify build output
+      run: |
+        echo "📂 Checking build output..."
+        dir dist
+        if (Test-Path "dist/360-账号批量注册工具.exe") {
+          echo "✅ Main executable created"
+          $size = (Get-Item "dist/360-账号批量注册工具.exe").Length / 1MB
+          echo "📊 File size: $([math]::Round($size, 2)) MB"
+        } else {
+          echo "❌ Main executable not found!"
+          exit 1
+        }
+        
+    - name: Create distribution package
+      run: |
+        echo "📦 Creating distribution package..."
+        # 创建发布包目录
+        New-Item -ItemType Directory -Force -Path "release-package"
+        
+        # 复制文件到发布包
+        Copy-Item "dist/360-账号批量注册工具.exe" "release-package/"
+        Copy-Item "dist/安装浏览器.bat" "release-package/"
+        Copy-Item "dist/使用说明.txt" "release-package/"
+        
+        # 创建版本信息文件
+        $version = Get-Date -Format "v1.0.0-yyyyMMdd"
+        $buildInfo = "360 账号批量注册工具 - Windows 版本`n`n构建信息:`n- 版本: $version`n- 构建时间: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')`n- Python 版本: 3.12`n- 构建环境: GitHub Actions (Windows)`n- 构建工具: Nuitka`n`n使用说明:`n1. 首次使用请运行 `"安装浏览器.bat`"`n2. 然后运行 `"360-账号批量注册工具.exe`"`n3. 详细说明请查看 `"使用说明.txt`"`n`n项目地址: https://github.com/${{ github.repository }}"
+        $buildInfo | Out-File -FilePath "release-package/版本信息.txt" -Encoding UTF8
+        
+        echo "📂 Release package contents:"
+        Get-ChildItem "release-package" | Format-Table Name, Length, LastWriteTime
+        
+    - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: windows-executable
-        path: |
-          dist/360-账号批量注册工具.exe
-          dist/安装浏览器.bat
-          dist/使用说明.txt
+        name: 360-账号批量注册工具-${{ github.run_number }}
+        path: release-package/*
         retention-days: 30
         
     - name: Create Release (if tagged)
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v2
       with:
+        name: "360 账号批量注册工具 ${{ github.ref_name }}"
+        body: |
+          ## 🎉 新版本发布
+          
+          ### 📦 下载文件
+          - `360-账号批量注册工具.exe` - 主程序
+          - `安装浏览器.bat` - 浏览器安装脚本  
+          - `使用说明.txt` - 使用指南
+          - `版本信息.txt` - 版本详情
+          
+          ### 🚀 使用步骤
+          1. 下载所有文件到同一目录
+          2. **首次使用**：双击运行 `安装浏览器.bat`
+          3. **日常使用**：双击运行 `360-账号批量注册工具.exe`
+          
+          ### ✨ 主要功能
+          - 🎨 Rich 终端界面，美观易用
+          - 📊 实时进度显示和日志输出  
+          - 💾 自动保存注册结果到 CSV
+          - 🔄 支持 1-100 个账号批量注册
+          
+          构建时间: ${{ steps.date.outputs.date }}
         files: |
-          dist/360-账号批量注册工具.exe
-          dist/安装浏览器.bat
-          dist/使用说明.txt
+          release-package/*
+        draft: false
+        prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Cleanup
+      if: always()
+      run: |
+        echo "🧹 Cleaning up temporary files..."
+        if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
+        echo "✅ Cleanup completed"
