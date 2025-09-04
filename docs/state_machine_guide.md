@@ -9,22 +9,22 @@
 ### 基本使用
 
 ```python
-# 使用状态机驱动的后端（推荐）
-from src.services.automation import PlaywrightBackendV2, AutomationService
+# 使用transitions框架的简化后端（推荐）
+from src.services.automation import PlaywrightBackend, AutomationService
 
 # 方式1：通过AutomationService（推荐）
 service = AutomationService()
 accounts = [Account(1, "user1", "pass1"), Account(2, "user2", "pass2")]
-await service.process_accounts_batch(accounts, backend_name="playwright_v2")
+await service.process_accounts_batch(accounts)
 
 # 方式2：直接使用后端
-backend = PlaywrightBackendV2()
+backend = PlaywrightBackend()
 success = await backend.register_account(account)
 
 # 方式3：直接使用状态机（高级用法）
-from src.services.automation import PlaywrightRegistrationStateMachine
-state_machine = PlaywrightRegistrationStateMachine(account, page)
-success = await state_machine.run_state_machine()
+from src.services.automation import RegistrationMachine
+state_machine = RegistrationMachine(account, page)
+success = await state_machine.execute()
 ```
 
 ### 验证码处理
@@ -144,11 +144,9 @@ src/services/automation/
 ├── __init__.py                        # 模块导出和架构说明
 ├── automation_service.py              # 主要协调服务
 ├── base_backend.py                    # 抽象后端接口
-├── playwright_backend.py              # 传统Playwright实现
-├── playwright_backend_v2.py           # 状态机驱动实现（推荐）
+├── playwright_backend.py              # Transitions框架实现（推荐）
 ├── selenium_backend.py                # Selenium实现
-├── registration_state_machine.py      # 核心状态机逻辑
-├── playwright_state_machine.py        # Playwright状态机实现
+├── simple_state_machine.py            # 核心状态机逻辑（transitions框架）
 ├── captcha_handler.py                 # 验证码处理系统
 ├── form_helpers.py                    # 表单选择器和工具
 └── result_detector.py                 # 结果检测器

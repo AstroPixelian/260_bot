@@ -12,7 +12,7 @@ from pathlib import Path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from src.services.automation.simple_playwright_backend import SimplePlaywrightBackend
+from src.services.automation.playwright_backend import PlaywrightBackend
 from src.models.account import Account
 
 async def test_simple_state_machine():
@@ -26,7 +26,7 @@ async def test_simple_state_machine():
     print("=" * 50)
     
     account = Account(1, username, password)
-    backend = SimplePlaywrightBackend()
+    backend = PlaywrightBackend()
     
     try:
         print("🚀 开始注册流程...")

@@ -44,7 +44,7 @@ def test_argument_parsing():
             "--username", "testuser123", 
             "--password", "password123",
             "--verbose",
-            "--backend", "playwright_v2"
+            "--backend", "playwright"
         ])
         
         print(f"   ✅ Arguments parsed successfully")
@@ -90,7 +90,7 @@ def test_service_integration():
     
     try:
         # Test different backends
-        backends = ["playwright_v2", "playwright", "selenium"]
+        backends = ["playwright", "selenium"]
         
         for backend in backends:
             try:
@@ -159,7 +159,7 @@ def main():
     if passed == total:
         print("🎉 所有测试通过！CLI模块与状态机完全兼容")
         print("\n✅ CLI功能验证:")
-        print("   • 状态机后端 (playwright_v2) 默认启用")
+        print("   • Transitions框架状态机后端 (playwright) 默认启用")
         print("   • 详细日志输出支持 (--verbose)")
         print("   • 多后端选择支持 (--backend)")
         print("   • 完整回调系统集成")

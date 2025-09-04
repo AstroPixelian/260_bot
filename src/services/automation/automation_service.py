@@ -11,11 +11,11 @@ from typing import Callable, Optional, Literal, Union
 from ...models.account import Account, AccountStatus
 from ...translation_manager import tr
 from .base_backend import AutomationBackend
-from .simple_playwright_backend import SimplePlaywrightBackend
+from .playwright_backend import PlaywrightBackend
 from .selenium_backend import SeleniumBackend
 
 # Type alias for automation backend
-AutomationBackendType = Literal["simple_playwright", "selenium"]
+AutomationBackendType = Literal["playwright", "selenium"]
 
 
 class BackendFactory:
@@ -24,8 +24,8 @@ class BackendFactory:
     @staticmethod
     def create_backend(backend_type: AutomationBackendType) -> AutomationBackend:
         """Create an automation backend instance"""
-        if backend_type == "simple_playwright":
-            return SimplePlaywrightBackend()
+        if backend_type == "playwright":
+            return PlaywrightBackend()
         elif backend_type == "selenium":
             return SeleniumBackend()
         else:
@@ -36,11 +36,11 @@ class BackendFactory:
         """Get list of available backends"""
         available = []
         
-        # Check Simple Playwright (transitions framework) - preferred
+        # Check Playwright (transitions framework) - preferred
         try:
-            backend = SimplePlaywrightBackend()
+            backend = PlaywrightBackend()
             if backend.is_available():
-                available.append("simple_playwright")
+                available.append("playwright")
         except Exception:
             pass
         
@@ -85,7 +85,7 @@ class AutomationService:
     are delegated to specific backend implementations.
     """
     
-    def __init__(self, backend_type: AutomationBackendType = "simple_playwright"):
+    def __init__(self, backend_type: AutomationBackendType = "playwright"):
         """Initialize automation service with specified backend"""
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         

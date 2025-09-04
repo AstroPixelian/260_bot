@@ -27,7 +27,7 @@ Architecture Overview:
                       │             │
                       ▼             ▼
     ┌─────────────────────┐  ┌─────────────────────┐
-    │SimplePlaywrightBackend│  │   SeleniumBackend   │
+    │   PlaywrightBackend │  │   SeleniumBackend   │
     │ (Transitions-based) │  │    (Legacy impl)    │
     └─────────────────────┘  └─────────────────────┘
                 │
@@ -56,7 +56,7 @@ Component Responsibilities:
    - Callback coordination between backends and UI
    - Configuration and error handling
 
-2. **SimplePlaywrightBackend**: 
+2. **PlaywrightBackend**: 
    - Transitions framework-based Playwright automation
    - Improved error handling and resource management
    - Callback integration for UI updates
@@ -75,15 +75,15 @@ Usage Patterns:
 ===============
 
 # Recommended usage (default backend)
-service = AutomationService()  # Uses simple_playwright by default
+service = AutomationService()  # Uses playwright by default
 await service.register_single_account(account)
 
 # Explicit backend selection
-service = AutomationService(backend_type="simple_playwright")
+service = AutomationService(backend_type="playwright")
 await service.process_accounts_batch(accounts)
 
 # CLI usage
-python src/cli.py --username "test123" --password "testpass123" --backend simple_playwright
+python src/cli.py --username "test123" --password "testpass123" --backend playwright
 
 Key Features:
 =============
@@ -99,7 +99,7 @@ Key Features:
 
 from .automation_service import AutomationService
 from .base_backend import AutomationBackend
-from .simple_playwright_backend import SimplePlaywrightBackend
+from .playwright_backend import PlaywrightBackend
 from .selenium_backend import SeleniumBackend
 
 # State machine components
@@ -108,7 +108,7 @@ from .simple_state_machine import RegistrationMachine
 __all__ = [
     'AutomationService',
     'AutomationBackend', 
-    'SimplePlaywrightBackend',
+    'PlaywrightBackend',
     'SeleniumBackend',
     # State machine exports
     'RegistrationMachine'

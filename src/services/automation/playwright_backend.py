@@ -1,6 +1,6 @@
 """
-使用简化状态机的Playwright后端
-Playwright Backend using Simplified State Machine
+Playwright后端实现
+Playwright Backend Implementation
 """
 
 import asyncio
@@ -16,8 +16,8 @@ from ...translation_manager import tr
 from ...exceptions import BrowserInitializationError
 
 
-class SimplePlaywrightBackend(AutomationBackend):
-    """使用简化状态机的Playwright自动化后端"""
+class PlaywrightBackend(AutomationBackend):
+    """Playwright自动化后端"""
     
     def __init__(self):
         super().__init__()
@@ -29,7 +29,7 @@ class SimplePlaywrightBackend(AutomationBackend):
         self.browser_context: Optional[BrowserContext] = None
     
     def get_backend_name(self) -> str:
-        return "simple_playwright"
+        return "playwright"
     
     def is_available(self) -> bool:
         """Check if Playwright is available"""

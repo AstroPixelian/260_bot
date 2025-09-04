@@ -31,7 +31,7 @@ class CLIHandler:
     
     def __init__(self):
         # Use simplified state machine backend by default for better functionality
-        self.automation_service = AutomationService(backend_type="simple_playwright")
+        self.automation_service = AutomationService(backend_type="playwright")
         self.success = False
         self.error_message = ""
     
@@ -69,9 +69,9 @@ class CLIHandler:
         parser.add_argument(
             "--backend",
             type=str,
-            choices=["simple_playwright", "selenium"],
-            default="simple_playwright",
-            help=tr("Automation backend to use (default: simple_playwright)")
+            choices=["playwright", "selenium"],
+            default="playwright",
+            help=tr("Automation backend to use (default: playwright)")
         )
         
         return parser
@@ -121,7 +121,7 @@ class CLIHandler:
             on_log_message=on_log_message
         )
     
-    async def register_account(self, username: str, password: str, verbose: bool = False, backend: str = "playwright_v2") -> bool:
+    async def register_account(self, username: str, password: str, verbose: bool = False, backend: str = "playwright") -> bool:
         """
         注册单个账户
         Register a single account
@@ -142,7 +142,7 @@ class CLIHandler:
             return False
         
         # Update backend if specified
-        if backend != "simple_playwright":
+        if backend != "playwright":
             try:
                 self.automation_service = AutomationService(backend_type=backend)
                 print(tr("🔧 Using backend: {0}").format(backend))
@@ -165,7 +165,7 @@ class CLIHandler:
             print(tr("   Backend: {0}").format(backend))
             print(tr("   Username: {0}").format(username))
             print(tr("   Verbose: {0}").format("Enabled" if verbose else "Disabled"))
-            print(tr("   State Machine: Enabled" if backend == "playwright_v2" else "   State Machine: Disabled"))
+            print(tr("   State Machine: Enabled"))
             print("-" * 50)
             
             # Register account using automation service

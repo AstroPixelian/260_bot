@@ -356,8 +356,7 @@
 
 ```
 src/services/automation/
-├── registration_state_machine.py      # 核心状态机逻辑
-├── playwright_state_machine.py        # Playwright具体实现
-├── captcha_handler.py                 # 验证码处理器
-└── playwright_backend_v2.py           # 状态机驱动的后端
+├── simple_state_machine.py             # 核心状态机逻辑（transitions框架）
+├── captcha_handler.py                  # 验证码处理器
+└── playwright_backend.py               # Transitions框架驱动的后端
 ```
