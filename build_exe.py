@@ -48,7 +48,7 @@ def build_exe():
         "--onefile",                      # 单文件模式
         "--assume-yes-for-downloads",     # 自动同意下载
         "--show-progress",                # 显示进度
-        "--show-memory",                  # 显示内存使用
+        # "--show-memory",                  # 显示内存使用
         
         # 输出选项
         "--output-filename=360-账号批量注册工具.exe",
@@ -56,7 +56,7 @@ def build_exe():
         
         # Windows 特定选项
         "--windows-console-mode=attach",  # 附加到控制台
-        "--enable-console",              # 启用控制台输出
+        "--windows-console-mode=force",   # 启用控制台输出
         
         # 包含路径和模块
         f"--include-package-data=faker",     # Faker 数据文件
@@ -64,6 +64,38 @@ def build_exe():
         f"--include-package=transitions",    # 状态机
         f"--include-package=pandas",         # 数据处理
         f"--include-package=filelock",       # 文件锁
+
+        # pandas 优化 - 只包含核心功能
+        "--include-package=pandas.core.api",
+        "--include-package=pandas.io.formats",
+        "--include-package=pandas.io.common",
+
+        # 排除不需要的包以减少体积和构建时间
+        "--nofollow-import-to=numpy.distutils",
+        "--nofollow-import-to=setuptools",
+        "--nofollow-import-to=distutils",
+        "--nofollow-import-to=pip",
+        "--nofollow-import-to=wheel",
+        "--nofollow-import-to=pkg_resources",
+        "--nofollow-import-to=matplotlib",
+        "--nofollow-import-to=scipy",
+        "--nofollow-import-to=IPython",
+        "--nofollow-import-to=jupyter",
+        "--nofollow-import-to=notebook",
+
+        # pandas 子模块排除 - 排除不需要的大型子模块
+        "--nofollow-import-to=pandas.tests",
+        "--nofollow-import-to=pandas.plotting",
+        "--nofollow-import-to=pandas.tseries",
+        "--nofollow-import-to=pandas.core.resample",
+        "--nofollow-import-to=pandas.core.window",
+        "--nofollow-import-to=pandas.core.groupby.grouper",
+        "--nofollow-import-to=pandas.io.sql",
+        "--nofollow-import-to=pandas.io.parquet",
+        "--nofollow-import-to=pandas.io.feather",
+        "--nofollow-import-to=pandas.io.gbq",
+        "--nofollow-import-to=pandas.io.stata",
+        "--nofollow-import-to=pandas.io.sas",
         
         # Playwright 相关 (关键!)
         f"--include-package=playwright",     # Playwright 核心
@@ -73,8 +105,8 @@ def build_exe():
         f"--include-plugin-directory={src_dir}",
         
         # 性能选项
-        "--lto=no",                      # 禁用链接时优化 (避免 Playwright 问题)
-        "--jobs=4",                      # 并行编译
+        "--lto=no",                                 # 禁用链接时优化 (避免 Playwright 问题)
+        f"--jobs={min(4, os.cpu_count() or 2)}",    # 并行编译
         
         # 调试选项 (可选，发布时可移除)
         # "--debug",
