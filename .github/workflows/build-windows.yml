@@ -1,0 +1,59 @@
+name: Build Windows Executable
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras
+        uv add nuitka
+        
+    - name: Install Playwright browsers
+      run: |
+        uv run playwright install chromium
+        
+    - name: Build executable
+      run: |
+        uv run python build_exe.py
+        
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-executable
+        path: |
+          dist/360-账号批量注册工具.exe
+          dist/安装浏览器.bat
+          dist/使用说明.txt
+        retention-days: 30
+        
+    - name: Create Release (if tagged)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/360-账号批量注册工具.exe
+          dist/安装浏览器.bat
+          dist/使用说明.txt
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
