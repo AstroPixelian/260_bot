@@ -20,6 +20,8 @@ dependencies = [
     "setuptools>=80.9.0",
     "transitions>=0.9.3",
     "rich>=14.1.0",
+    "pandas>=2.3.2",
+    "filelock>=3.19.1",
 ]
 
 [dependency-groups]

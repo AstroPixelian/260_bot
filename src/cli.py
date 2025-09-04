@@ -9,6 +9,7 @@ Provides CLI functionality for single account registration
 import argparse
 import asyncio
 import sys
+import time
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -18,6 +19,7 @@ sys.path.insert(0, str(project_root))
 
 from src.models.account import Account, AccountStatus
 from src.services.automation.automation_service import AutomationService
+from src.services.persistence_service import PersistenceService
 
 
 # Simplified tr function for CLI mode (without Qt dependency)
@@ -32,8 +34,16 @@ class CLIHandler:
     def __init__(self):
         # Use simplified state machine backend by default for better functionality
         self.automation_service = AutomationService(backend_type="playwright")
+        
+        # 创建持久化服务（保存到当前目录）
+        self.persistence_service = PersistenceService(
+            output_dir=str(Path.cwd()),  # CLI脚本同目录
+            batch_size=5  # 每5个账号批量保存
+        )
+        
         self.success = False
         self.error_message = ""
+        self.start_time = None
     
     def create_argument_parser(self) -> argparse.ArgumentParser:
         """
@@ -115,11 +125,29 @@ class CLIHandler:
             if verbose:
                 print(tr("📋 {0}").format(message))
         
+        # 设置所有回调，包括coordination回调
         self.automation_service.set_callbacks(
             on_account_start=on_account_start,
-            on_account_complete=on_account_complete,
+            on_account_complete=self._get_combined_complete_callback(on_account_complete),
             on_log_message=on_log_message
         )
+    
+    def _get_combined_complete_callback(self, original_callback):
+        """获取组合的完成回调，包含持久化逻辑"""
+        def combined_callback(account):
+            # 执行原始回调
+            original_callback(account)
+            
+            # 执行持久化逻辑
+            duration = getattr(account, '_duration', 0.0)
+            backend = self.automation_service.get_backend_name()
+            self.persistence_service.add_result(account, duration, backend)
+            
+            # 显示统计信息
+            stats = self.persistence_service.get_stats()
+            print(f"💾 已处理: {stats['total_saved'] + stats['buffer_count']} 个账号")
+        
+        return combined_callback
     
     async def register_account(self, username: str, password: str, verbose: bool = False, backend: str = "playwright") -> bool:
         """
@@ -161,21 +189,33 @@ class CLIHandler:
         self.setup_callbacks(verbose)
         
         try:
+            self.start_time = time.time()
             print(tr("🚀 360 Account Registration Started"))
             print(tr("   Backend: {0}").format(backend))
             print(tr("   Username: {0}").format(username))
-            print(tr("   Verbose: {0}").format("Enabled" if verbose else "Disabled"))
+            print(tr("   Results file: {0}").format(self.persistence_service.csv_file))
             print(tr("   State Machine: Enabled"))
             print("-" * 50)
             
+            # 给account添加计时功能
+            account._start_time = time.time()
+            
             # Register account using automation service
             await self.automation_service.register_single_account(account)
+            
+            # 计算耗时
+            account._duration = time.time() - account._start_time
             
             print("-" * 50)
             if self.success:
                 print(tr("🎉 Registration completed successfully!"))
             else:
                 print(tr("💥 Registration failed: {0}").format(self.error_message))
+            
+            # 显示最终统计
+            stats = self.persistence_service.get_stats()
+            print(f"💾 结果已保存: {stats['file_path']}")
+            print(f"📊 总计处理: {stats['total_saved']} 个账号")
             
             return self.success
         
