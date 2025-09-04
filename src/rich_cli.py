@@ -612,12 +612,87 @@ class RichCLIHandler:
                 self.persistence_service.force_save()
 
 
+def check_playwright_browsers():
+    """检查 Playwright 浏览器是否已安装"""
+    try:
+        import subprocess
+        import os
+        
+        # 尝试导入 playwright
+        from playwright.sync_api import sync_playwright
+        
+        # 检查浏览器是否已安装
+        with sync_playwright() as p:
+            try:
+                # 尝试启动浏览器 (headless 模式，不显示窗口)
+                browser = p.chromium.launch(headless=True)
+                browser.close()
+                return True
+            except Exception:
+                # 浏览器未安装或损坏
+                return False
+                
+    except ImportError:
+        # playwright 模块未安装
+        return False
+    except Exception:
+        # 其他错误
+        return False
+
+def install_playwright_browsers(console: Console):
+    """安装 Playwright 浏览器"""
+    console.print("[yellow]🔍 检测到 Playwright 浏览器未安装[/yellow]")
+    console.print()
+    
+    # 询问用户是否安装
+    from rich.prompt import Confirm
+    if not Confirm.ask("是否立即下载和安装浏览器? (首次使用必需)"):
+        console.print("[red]❌ 无法继续，程序需要浏览器才能运行[/red]")
+        console.print("[dim]你也可以手动运行 'playwright install chromium' 来安装浏览器[/dim]")
+        return False
+    
+    console.print("[blue]⬇️ 正在下载和安装 Chromium 浏览器...[/blue]")
+    console.print("[dim]这可能需要几分钟时间，请耐心等待...[/dim]")
+    
+    try:
+        import subprocess
+        
+        # 安装 Chromium 浏览器
+        with console.status("[blue]正在安装浏览器..."):
+            result = subprocess.run([
+                sys.executable, "-m", "playwright", "install", "chromium"
+            ], capture_output=True, text=True, timeout=300)  # 5分钟超时
+            
+        if result.returncode == 0:
+            console.print("[green]✅ 浏览器安装成功![/green]")
+            return True
+        else:
+            console.print(f"[red]❌ 浏览器安装失败: {result.stderr}[/red]")
+            return False
+            
+    except subprocess.TimeoutExpired:
+        console.print("[red]❌ 安装超时，请检查网络连接后重试[/red]")
+        return False
+    except Exception as e:
+        console.print(f"[red]❌ 安装过程发生错误: {e}[/red]")
+        return False
+
 async def main():
     """主入口函数"""
     console = Console()
     
     # 显示启动消息
     console.print("[bold blue]🚀 360 账号批量注册器 - Rich UI 版本[/bold blue]")
+    console.print("[dim]正在检查运行环境...[/dim]\n")
+    
+    # 检查 Playwright 浏览器
+    if not check_playwright_browsers():
+        if not install_playwright_browsers(console):
+            console.print("\n[red]程序无法继续运行[/red]")
+            return
+        console.print()
+    
+    console.print("[green]✅ 运行环境检查完成[/green]")
     console.print("[dim]启动中...[/dim]\n")
     
     rich_cli = RichCLIHandler()
