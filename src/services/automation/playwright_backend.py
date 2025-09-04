@@ -13,6 +13,7 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError, Error a
 from .base_backend import AutomationBackend
 from .form_helpers import FormSelectors, RetryHelper
 from .result_detector import RegistrationResultDetector
+from .playwright_state_machine import PlaywrightRegistrationStateMachine
 from ...models.account import Account, AccountStatus
 from ...translation_manager import tr
 from ...exceptions import (
