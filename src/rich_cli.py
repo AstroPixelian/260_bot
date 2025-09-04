@@ -29,6 +29,10 @@ from rich.prompt import Prompt, IntPrompt, Confirm
 from rich.columns import Columns
 from rich import box
 from rich.rule import Rule
+from rich.logging import RichHandler
+from rich.markdown import Markdown
+from collections import deque
+import logging
 
 # 添加项目根目录到路径
 project_root = Path(__file__).parent.parent
@@ -66,6 +70,10 @@ class RichCLIHandler:
         self.current_account_index = 0
         self.start_time = None
         
+        # 日志管理
+        self.log_messages = deque(maxlen=100)  # 保持最新的100条日志
+        self.setup_logging()
+        
         # 创建符合360注册限制的账号生成器配置
         self.account_generator_config = {
             "account_generator": {
@@ -86,6 +94,74 @@ class RichCLIHandler:
             'pending': 0,
             'total_duration': 0
         }
+        
+        # 日志更新标志
+        self.log_updated = False
+    
+    def setup_logging(self):
+        """设置日志系统"""
+        # 创建自定义日志处理器，将日志消息添加到队列中
+        class LogMessageHandler(logging.Handler):
+            def __init__(self, log_queue):
+                super().__init__()
+                self.log_queue = log_queue
+            
+            def emit(self, record):
+                try:
+                    msg = self.format(record)
+                    timestamp = datetime.now().strftime("%H:%M:%S")
+                    formatted_msg = f"{timestamp} {msg}"
+                    self.log_queue.append(formatted_msg)
+                except Exception:
+                    pass  # 避免日志系统本身出错
+        
+        # 设置自定义处理器
+        self.log_handler = LogMessageHandler(self.log_messages)
+        self.log_handler.setLevel(logging.INFO)
+        
+        # 设置日志格式
+        formatter = logging.Formatter('%(message)s')
+        self.log_handler.setFormatter(formatter)
+    
+    def add_log_message(self, message: str, level: str = "INFO"):
+        """手动添加日志消息"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        
+        # 根据级别添加颜色标记
+        if level == "SUCCESS":
+            colored_msg = f"[green]✅ {message}[/green]"
+        elif level == "ERROR":
+            colored_msg = f"[red]❌ {message}[/red]"
+        elif level == "WARNING":
+            colored_msg = f"[yellow]⚠️ {message}[/yellow]"
+        elif level == "INFO":
+            colored_msg = f"[blue]ℹ️ {message}[/blue]"
+        else:
+            colored_msg = message
+        
+        formatted_msg = f"{timestamp} {colored_msg}"
+        self.log_messages.append(formatted_msg)
+        
+        # 标记有新日志需要更新显示
+        self.log_updated = True
+    
+    def get_log_panel(self, height: int = 8) -> Panel:
+        """获取日志显示面板"""
+        # 获取最新的日志消息
+        recent_logs = list(self.log_messages)[-height:]
+        
+        if not recent_logs:
+            log_content = "[dim]暂无日志信息...[/dim]"
+        else:
+            log_content = "\n".join(recent_logs)
+        
+        return Panel(
+            log_content,
+            title="📋 实时日志",
+            box=box.ROUNDED,
+            style="dim",
+            height=height + 2,  # +2 for border
+        )
     
     def show_welcome(self):
         """显示欢迎界面"""
@@ -265,6 +341,7 @@ class RichCLIHandler:
         """设置自动化服务回调"""
         def on_account_start(account: Account):
             account._start_time = time.time()
+            self.add_log_message(f"开始处理账号: {account.username}", "INFO")
         
         def on_account_complete(account: Account):
             # 计算耗时
@@ -272,6 +349,14 @@ class RichCLIHandler:
                 account._duration = time.time() - account._start_time
             else:
                 account._duration = 0
+            
+            # 添加日志
+            if account.status == AccountStatus.SUCCESS:
+                self.add_log_message(f"账号 {account.username} 注册成功 ({account._duration:.1f}s)", "SUCCESS")
+            elif account.status == AccountStatus.FAILED:
+                self.add_log_message(f"账号 {account.username} 注册失败: {account.notes}", "ERROR")
+            elif account.status == AccountStatus.CAPTCHA_PENDING:
+                self.add_log_message(f"账号 {account.username} 需要处理验证码", "WARNING")
             
             # 保存结果
             if self.persistence_service:
@@ -285,9 +370,9 @@ class RichCLIHandler:
             self._update_stats(account)
         
         def on_log_message(message: str):
-            # 在详细模式下记录日志
+            # 在详细模式下记录自动化服务的日志
             if self.config.verbose:
-                pass  # 日志会在实时界面中显示
+                self.add_log_message(message, "INFO")
         
         self.automation_service.set_callbacks(
             on_account_start=on_account_start,
@@ -306,6 +391,14 @@ class RichCLIHandler:
         """运行批量注册"""
         self.start_time = time.time()
         
+        # 如果启用详细日志，使用带日志显示的布局界面
+        if self.config.verbose:
+            await self._run_with_log_display()
+        else:
+            await self._run_simple_progress()
+    
+    async def _run_simple_progress(self):
+        """简单进度显示模式（无详细日志）"""
         with Progress(
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
@@ -320,40 +413,109 @@ class RichCLIHandler:
                 total=len(self.accounts)
             )
             
-            for i, account in enumerate(self.accounts):
-                self.current_account_index = i
-                
-                # 更新进度描述
-                progress.update(
-                    overall_task, 
-                    description=f"🔄 正在处理: {account.username}"
-                )
-                
+            await self._process_accounts(progress, overall_task)
+    
+    async def _run_with_log_display(self):
+        """带日志显示的进度模式"""
+        from rich.layout import Layout
+        from rich.live import Live
+        
+        # 创建布局
+        layout = Layout()
+        layout.split_column(
+            Layout(name="progress", size=8),
+            Layout(name="logs", ratio=1)
+        )
+        
+        # 创建进度组件
+        progress = Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TextColumn("({task.completed}/{task.total})"),
+            TimeRemainingColumn()
+        )
+        
+        overall_task = progress.add_task(
+            "🚀 批量注册进度", 
+            total=len(self.accounts)
+        )
+        
+        # 初始化布局
+        layout["progress"].update(
+            Panel(progress, title="📊 注册进度", border_style="blue")
+        )
+        layout["logs"].update(self.get_log_panel())
+        
+        # 启动实时显示
+        with Live(layout, console=self.console, refresh_per_second=10):
+            # 创建后台任务来监控日志更新
+            log_update_task = asyncio.create_task(self._monitor_log_updates(layout))
+            
+            try:
+                # 处理账号注册
+                await self._process_accounts(progress, overall_task, layout)
+            finally:
+                # 停止日志监控任务
+                log_update_task.cancel()
                 try:
-                    # 注册账号
-                    await self.automation_service.register_single_account(account)
-                    
-                    # 显示结果
+                    await log_update_task
+                except asyncio.CancelledError:
+                    pass
+    
+    async def _monitor_log_updates(self, layout):
+        """后台监控日志更新"""
+        while True:
+            if self.log_updated:
+                # 更新日志显示
+                layout["logs"].update(self.get_log_panel())
+                self.log_updated = False
+            
+            # 等待一小段时间再次检查
+            await asyncio.sleep(0.1)  # 100ms 检查间隔，确保实时性
+    
+    async def _process_accounts(self, progress, overall_task, layout=None):
+        """处理账号注册逻辑"""
+        for i, account in enumerate(self.accounts):
+            self.current_account_index = i
+            
+            # 更新进度描述
+            progress.update(
+                overall_task, 
+                description=f"🔄 正在处理: {account.username}"
+            )
+            
+            try:
+                # 注册账号
+                await self.automation_service.register_single_account(account)
+                
+                # 在非详细模式下显示简单结果
+                if not self.config.verbose:
                     if account.status == AccountStatus.SUCCESS:
                         self.console.print(f"[green]✅ {account.username} 注册成功[/green]")
                     elif account.status == AccountStatus.CAPTCHA_PENDING:
                         self.console.print(f"[yellow]🔍 {account.username} 需要处理验证码[/yellow]")
                     else:
                         self.console.print(f"[red]❌ {account.username} 注册失败: {account.notes}[/red]")
-                    
-                except KeyboardInterrupt:
-                    self.console.print("\n[yellow]⚠️ 用户中断操作[/yellow]")
-                    break
-                except Exception as e:
-                    account.mark_failed(f"注册异常: {str(e)}")
-                    self.console.print(f"[red]💥 {account.username} 发生异常: {e}[/red]")
                 
-                # 更新进度
-                progress.update(overall_task, advance=1)
+            except KeyboardInterrupt:
+                self.add_log_message("用户中断操作", "WARNING")
+                if not self.config.verbose:
+                    self.console.print("\n[yellow]⚠️ 用户中断操作[/yellow]")
+                break
+            except Exception as e:
+                account.mark_failed(f"注册异常: {str(e)}")
+                error_msg = f"账号 {account.username} 发生异常: {e}"
+                self.add_log_message(error_msg, "ERROR")
+                if not self.config.verbose:
+                    self.console.print(f"[red]💥 {error_msg}[/red]")
             
-            # 强制保存剩余数据
-            if self.persistence_service:
-                self.persistence_service.force_save()
+            # 更新进度
+            progress.update(overall_task, advance=1)
+        
+        # 强制保存剩余数据
+        if self.persistence_service:
+            self.persistence_service.force_save()
     
     def show_results(self):
         """显示最终结果"""
@@ -452,6 +614,12 @@ class RichCLIHandler:
 
 async def main():
     """主入口函数"""
+    console = Console()
+    
+    # 显示启动消息
+    console.print("[bold blue]🚀 360 账号批量注册器 - Rich UI 版本[/bold blue]")
+    console.print("[dim]启动中...[/dim]\n")
+    
     rich_cli = RichCLIHandler()
     await rich_cli.run()
 
