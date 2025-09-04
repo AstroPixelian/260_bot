@@ -15,19 +15,25 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
-    
+
+    # Add these environment variables to fix Unicode issues
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: 1
+      PYTHONLEGACYWINDOWSSTDIO: 0
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Set up Python 3.12
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
-        
+
     - name: Install uv
       uses: astral-sh/setup-uv@v3
-      
+
     - name: Cache Python dependencies
       uses: actions/cache@v4
       with:
@@ -35,18 +41,20 @@ jobs:
         key: ${{ runner.os }}-uv-${{ hashFiles('**/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-uv-
-          
+
     - name: Install Python dependencies
       run: |
         uv sync --all-extras
         uv add nuitka>=2.7.13
-        
+
     - name: Install Playwright browsers
       run: |
         uv run playwright install chromium
-        
+
     - name: Verify environment
       run: |
+        # Set UTF-8 encoding for Windows
+        chcp 65001
         uv run python --version
         echo "Checking Playwright installation..."
         uv run python -c "import playwright; print('✅ Playwright imported successfully')"
@@ -57,20 +65,26 @@ jobs:
         echo "Checking project imports..."
         uv run python -c "from src.models.account import Account; print('✅ Account model imported')"
         uv run python -c "from src.services.automation.automation_service import AutomationService; print('✅ AutomationService imported')"
-        
+
     - name: Test application before build
       run: |
+        # Set UTF-8 encoding for Windows
+        chcp 65001
         echo "Testing basic imports..."
         uv run python -c "from src.rich_cli import main; print('✅ Rich CLI imports successfully')"
-        
+
     - name: Build Windows executable
       run: |
+        # Set UTF-8 encoding for Windows
+        chcp 65001
         echo "🚀 Starting Nuitka build..."
         uv run python build_exe.py
-        
+
     - name: Verify build output
       run: |
-        echo "📂 Checking build output..."
+        # Set UTF-8 encoding for Windows
+        chcp 65001
+        echo "Checking build output..."
         dir dist
         if (Test-Path "dist/360-账号批量注册工具.exe") {
           echo "✅ Main executable created"
@@ -80,9 +94,11 @@ jobs:
           echo "❌ Main executable not found!"
           exit 1
         }
-        
+
     - name: Create distribution package
       run: |
+        # Set UTF-8 encoding for Windows
+        chcp 65001
         echo "📦 Creating distribution package..."
         # 创建发布包目录
         New-Item -ItemType Directory -Force -Path "release-package"
@@ -99,14 +115,14 @@ jobs:
         
         echo "📂 Release package contents:"
         Get-ChildItem "release-package" | Format-Table Name, Length, LastWriteTime
-        
+
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
         name: 360-账号批量注册工具-${{ github.run_number }}
         path: release-package/*
         retention-days: 30
-        
+
     - name: Create Release (if tagged)
       if: startsWith(github.ref, 'refs/tags/v')
       uses: softprops/action-gh-release@v2
@@ -139,10 +155,12 @@ jobs:
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        
+
     - name: Cleanup
       if: always()
       run: |
+        # Set UTF-8 encoding for Windows
+        chcp 65001
         echo "🧹 Cleaning up temporary files..."
         if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
         echo "✅ Cleanup completed"
