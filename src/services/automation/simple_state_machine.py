@@ -370,6 +370,83 @@ class RegistrationMachine:
             self._log(f"❌ 等待结果失败: {e}")
             await self._handle_error(e)
     
+    async def on_enter_captcha_monitoring(self, event):
+        """进入验证码监控状态"""
+        self._log("🔍 进入验证码监控模式")
+        self._log("   请手动完成验证码，系统每5秒检测一次状态")
+        
+        # 通知UI验证码被检测到
+        if self.on_captcha_detected:
+            self.on_captcha_detected(self.account, "检测到验证码，需要手动处理")
+        
+        # 启动监控循环
+        asyncio.create_task(self._monitor_captcha_status())
+    
+    async def _monitor_captcha_status(self):
+        """监控验证码状态的异步任务"""
+        monitor_count = 0
+        max_monitor_time = 300  # 最大监控5分钟
+        
+        while self.state == 'captcha_monitoring' and monitor_count < max_monitor_time / 5:
+            try:
+                await asyncio.sleep(5)  # 每5秒检测一次
+                monitor_count += 1
+                
+                self._log(f"🔍 第{monitor_count}次验证码状态检测...")
+                
+                # 获取当前页面内容
+                page_content = await self.page.content()
+                current_url = self.page.url
+                
+                # 检查验证码是否还存在
+                captcha_indicators = ["验证码", "captcha", "滑动验证", "验证失败", "重新验证"]
+                captcha_still_present = any(indicator in page_content for indicator in captcha_indicators)
+                
+                if not captcha_still_present:
+                    self._log("✅ 验证码已消失，检查最终结果")
+                    
+                    # 检查是否出现已注册错误
+                    error_indicators = [
+                        "该账号已经注册", 
+                        "用户名已存在",
+                        "账号已被占用",
+                        "立即登录"
+                    ]
+                    
+                    if any(indicator in page_content for indicator in error_indicators):
+                        self._log("⚠️  检测到账号已注册错误")
+                        self.account.mark_failed("账号已注册")
+                        await self.registration_failed()
+                        return
+                    
+                    # 检查是否注册成功（检测"退出"按钮）
+                    success_indicators = ["退出", "logout", "个人中心", "用户中心"]
+                    if any(indicator in page_content for indicator in success_indicators):
+                        self._log("🎉 检测到注册成功标识")
+                        # 直接标记账户为成功并转到成功状态
+                        self.account.mark_success("注册成功")
+                        await self.registration_success()
+                        return
+                    
+                    # 如果没有明确的成功或失败标识，进入结果验证
+                    self._log("🔍 验证码已处理，进入结果验证")
+                    await self.captcha_solved()
+                    return
+                    
+                else:
+                    self._log("⏳ 验证码仍存在，继续等待...")
+                    
+            except Exception as e:
+                self._log(f"❌ 验证码监控出错: {e}")
+                await self._handle_error(e)
+                return
+        
+        # 如果监控超时
+        if monitor_count >= max_monitor_time / 5:
+            self._log("⏰ 验证码监控超时，转为失败状态")
+            self.account.mark_failed("验证码处理超时")
+            await self.registration_failed()
+    
     async def on_enter_verifying_success(self, event):
         """进入验证成功状态"""
         try:
