@@ -97,10 +97,11 @@ class PersistenceService:
             self.force_save()
         else:
             # 如果没有达到batch_size，立即保存单条记录防止数据丢失
-            self._save_single_record(new_record)
+            # 但保存后不清空缓冲区，这样atexit时就不会重复保存
+            self._save_single_record_immediate(new_record)
     
-    def _save_single_record(self, record: Dict[str, Any]):
-        """立即保存单条记录（防止数据丢失）"""
+    def _save_single_record_immediate(self, record: Dict[str, Any]):
+        """立即保存单条记录（防止数据丢失），并标记已保存"""
         try:
             single_df = pd.DataFrame([record])
             with self.file_lock:
@@ -111,8 +112,25 @@ class PersistenceService:
                     index=False,
                     encoding='utf-8'
                 )
+            # 记录这条数据已经被单独保存过了，避免重复保存
+            self._mark_record_saved(record)
         except Exception as e:
             print(f"⚠️ 单条记录保存失败: {e}")
+    
+    def _mark_record_saved(self, record: Dict[str, Any]):
+        """标记记录已保存，在force_save时跳过"""
+        if not hasattr(self, '_saved_records'):
+            self._saved_records = set()
+        # 使用timestamp + username作为唯一标识
+        record_id = f"{record['timestamp']}_{record['username']}"
+        self._saved_records.add(record_id)
+    
+    def _is_record_saved(self, record: Dict[str, Any]) -> bool:
+        """检查记录是否已经被保存过"""
+        if not hasattr(self, '_saved_records'):
+            return False
+        record_id = f"{record['timestamp']}_{record['username']}"
+        return record_id in self._saved_records
     
     def force_save(self):
         """强制保存缓冲区所有数据"""
@@ -120,9 +138,23 @@ class PersistenceService:
             print("📝 缓冲区为空，无需保存")
             return True
         
+        # 过滤掉已经单独保存过的记录
+        unsaved_records = []
+        for _, row in self.buffer_df.iterrows():
+            record = row.to_dict()
+            if not self._is_record_saved(record):
+                unsaved_records.append(record)
+        
+        if not unsaved_records:
+            print("📝 缓冲区中所有记录已保存，清空缓冲区")
+            self.buffer_df = pd.DataFrame()
+            return True
+        
         try:
+            # 只保存未保存的记录
+            unsaved_df = pd.DataFrame(unsaved_records)
             with self.file_lock:  # filelock自动处理跨进程文件锁
-                self.buffer_df.to_csv(
+                unsaved_df.to_csv(
                     self.csv_file,
                     mode='a',  # 追加模式，永不覆盖
                     header=not self.csv_file.exists(),  # 文件不存在时写表头
@@ -130,11 +162,12 @@ class PersistenceService:
                     encoding='utf-8'
                 )
             
-            count = len(self.buffer_df)
+            count = len(unsaved_records)
             # 清空缓冲区
             self.buffer_df = pd.DataFrame()
             
-            print(f"💾 成功保存 {count} 条记录到 {self.csv_file}")
+            if count > 0:
+                print(f"💾 成功保存 {count} 条新记录到 {self.csv_file}")
             return True
             
         except Exception as e:
@@ -152,9 +185,17 @@ class PersistenceService:
             except:
                 total_saved = 0
         
+        # 计算真正未保存的缓冲区记录数
+        unsaved_buffer_count = 0
+        if not self.buffer_df.empty:
+            for _, row in self.buffer_df.iterrows():
+                record = row.to_dict()
+                if not self._is_record_saved(record):
+                    unsaved_buffer_count += 1
+        
         return {
             'file_path': str(self.csv_file),
-            'buffer_count': len(self.buffer_df),
+            'buffer_count': unsaved_buffer_count,  # 只计算真正未保存的
             'total_saved': total_saved,
             'batch_size': self.batch_size
         }
