@@ -286,7 +286,10 @@ class RegistrationMachine:
         try:
             self._log("📋 填写注册表单")
             
-            # 填写用户名
+            # 验证输入参数
+            self._validate_input_constraints()
+            
+            # 填写用户名（不允许截断）
             await self._fill_field(
                 FormSelectors.USERNAME_FIELDS,
                 self.account.username,
@@ -532,9 +535,11 @@ class RegistrationMachine:
     
     # =================== 辅助方法 ===================
     
-    async def _fill_field(self, selectors, value, field_name):
+    async def _fill_field(self, selectors, value, field_name, allow_truncation=False):
         """填写表单字段"""
         filled = False
+        final_filled_value = None
+        
         for selector in selectors:
             try:
                 await self.page.wait_for_selector(selector, timeout=3000)
@@ -542,8 +547,53 @@ class RegistrationMachine:
                 
                 for element in elements:
                     if await element.is_visible():
+                        # 清空字段
                         await element.clear()
-                        await element.fill(value)
+                        
+                        # 记录输入前状态
+                        self._log(f"   📝 准备填写{field_name}: '{value}' (长度: {len(value)})")
+                        
+                        # 使用type方法逐字符输入，避免被JS截断
+                        await element.type(value, delay=50)  # 每个字符间隔50ms
+                        
+                        # 等待可能的JS处理
+                        await asyncio.sleep(0.5)
+                        
+                        # 验证实际填入的值
+                        actual_value = await element.input_value()
+                        self._log(f"   🔍 实际填入{field_name}: '{actual_value}' (长度: {len(actual_value)})")
+                        
+                        # 如果值不匹配
+                        if actual_value != value:
+                            if allow_truncation and len(actual_value) < len(value) and value.startswith(actual_value):
+                                # 允许截断且实际值是期望值的前缀
+                                self._log(f"   ⚠️  {field_name}被页面截断，但允许截断：'{actual_value}'")
+                                final_filled_value = actual_value
+                            else:
+                                # 尝试重新填写
+                                self._log(f"   ⚠️  {field_name}值不匹配，尝试重新填写")
+                                await element.clear()
+                                await asyncio.sleep(0.2)
+                                await element.fill(value)  # 使用fill方法再试一次
+                                await asyncio.sleep(0.3)
+                                
+                                # 再次验证
+                                final_value = await element.input_value()
+                                self._log(f"   🔍 重新填写后{field_name}: '{final_value}' (长度: {len(final_value)})")
+                                
+                                if final_value != value:
+                                    if allow_truncation and len(final_value) < len(value) and value.startswith(final_value):
+                                        # 重新填写后仍被截断，但允许截断
+                                        self._log(f"   ⚠️  {field_name}重填后仍被截断，但允许截断：'{final_value}'")
+                                        final_filled_value = final_value
+                                    else:
+                                        self._log(f"   ❌ {field_name}填写失败：期望 '{value}', 实际 '{final_value}'")
+                                        raise Exception(f"{field_name}填写不正确")
+                                else:
+                                    final_filled_value = final_value
+                        else:
+                            final_filled_value = actual_value
+                        
                         filled = True
                         break
                 
@@ -556,6 +606,37 @@ class RegistrationMachine:
         
         if not filled:
             raise Exception(f"无法填写{field_name}字段")
+        
+        return final_filled_value
+    
+    def _validate_input_constraints(self):
+        """
+        验证输入参数是否符合360注册页面的限制
+        - 用户名：2-14个字符，支持中英文、数字或"_"
+        - 密码：8-20个字符
+        用户应该输入正确的长度和格式，错误时提示
+        """
+        username = self.account.username
+        password = self.account.password
+        
+        # 验证用户名长度
+        if len(username) < 2:
+            raise Exception(f"用户名长度不足：'{username}' ({len(username)}字符) < 2字符最小要求")
+        elif len(username) > 14:
+            raise Exception(f"用户名长度超限：'{username}' ({len(username)}字符) > 14字符最大限制")
+        
+        # 验证用户名字符
+        import re
+        if not re.match(r'^[a-zA-Z0-9_\u4e00-\u9fa5]+$', username):
+            raise Exception(f"用户名格式错误：'{username}' 只支持中英文、数字或下划线(_)")
+        
+        # 验证密码长度
+        if len(password) < 8:
+            raise Exception(f"密码长度不足：{len(password)}字符 < 8字符最小要求")
+        elif len(password) > 20:
+            raise Exception(f"密码长度超限：{len(password)}字符 > 20字符最大限制")
+        
+        self._log(f"   ✅ 输入验证通过：用户名({len(username)}字符)，密码({len(password)}字符)")
     
     async def _check_terms_checkbox(self):
         """勾选用户条款"""
