@@ -612,31 +612,31 @@ class RichCLIHandler:
                 self.persistence_service.force_save()
 
 
-def check_playwright_browsers():
+async def check_playwright_browsers():
     """检查 Playwright 浏览器是否已安装"""
     try:
-        import subprocess
-        import os
-        
         # 尝试导入 playwright
-        from playwright.sync_api import sync_playwright
+        from playwright.async_api import async_playwright
         
         # 检查浏览器是否已安装
-        with sync_playwright() as p:
+        async with async_playwright() as p:
             try:
                 # 尝试启动浏览器 (headless 模式，不显示窗口)
-                browser = p.chromium.launch(headless=True)
-                browser.close()
+                browser = await p.chromium.launch(headless=True)
+                await browser.close()
                 return True
-            except Exception:
-                # 浏览器未安装或损坏
+            except Exception as e:
+                # 浏览器未安装或损坏，记录具体错误
+                print(f"Debug: 浏览器启动失败: {e}")
                 return False
                 
-    except ImportError:
+    except ImportError as e:
         # playwright 模块未安装
+        print(f"Debug: Playwright 模块未安装: {e}")
         return False
-    except Exception:
+    except Exception as e:
         # 其他错误
+        print(f"Debug: 检查浏览器时出错: {e}")
         return False
 
 def install_playwright_browsers(console: Console):
@@ -686,13 +686,15 @@ async def main():
     console.print("[dim]正在检查运行环境...[/dim]\n")
     
     # 检查 Playwright 浏览器
-    if not check_playwright_browsers():
+    if not await check_playwright_browsers():
+        # 只有在真的没有浏览器时才提示安装
         if not install_playwright_browsers(console):
             console.print("\n[red]程序无法继续运行[/red]")
             return
         console.print()
+    else:
+        console.print("[green]✅ Playwright 浏览器检查通过[/green]")
     
-    console.print("[green]✅ 运行环境检查完成[/green]")
     console.print("[dim]启动中...[/dim]\n")
     
     rich_cli = RichCLIHandler()
