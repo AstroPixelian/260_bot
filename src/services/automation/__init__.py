@@ -2,8 +2,8 @@
 Automation service module for batch account registration
 
 This module provides a clean separation between different automation backends
-(Playwright, Selenium) while maintaining a unified interface. Now includes
-state machine-based registration workflow management.
+(Simple Playwright, Selenium) while maintaining a unified interface. Uses
+transitions framework for simplified state machine-based registration workflow.
 
 Architecture Overview:
 ======================
@@ -26,27 +26,27 @@ Architecture Overview:
     └─────────────────┬─────────────┬─────────────────┘
                       │             │
                       ▼             ▼
-    ┌─────────────────────┐  ┌─────────────────────────┐
-    │  PlaywrightBackend  │  │   PlaywrightBackendV2   │ ← State machine based
-    │    (Legacy impl)    │  │  (State machine impl)   │
-    └─────────────────────┘  └─────────────────────────┘
-                                        │
-                                        ▼
+    ┌─────────────────────┐  ┌─────────────────────┐
+    │SimplePlaywrightBackend│  │   SeleniumBackend   │
+    │ (Transitions-based) │  │    (Legacy impl)    │
+    └─────────────────────┘  └─────────────────────┘
+                │
+                ▼
     ┌─────────────────────────────────────────────────┐
-    │     PlaywrightRegistrationStateMachine          │ ← Core state machine
-    │           (State-driven workflow)               │
+    │         RegistrationMachine                     │ ← Transitions framework
+    │      (12-state workflow with transitions)       │
     └─────────────────┬───────────────────────────────┘
                       │
                       ▼
     ┌─────────────────────────────────────────────────┐
-    │          CaptchaHandler/Monitor                 │ ← Captcha processing
+    │          Captcha Monitoring                     │ ← 120-second monitoring
     │        (Enhanced captcha management)            │
     └─────────────────────────────────────────────────┘
 
     Supporting Components:
     ├── FormHelpers      ← Common selectors and utilities
     ├── ResultDetector   ← Registration result detection
-    └── SeleniumBackend  ← Alternative backend implementation
+    └── CaptchaHandler   ← Captcha detection components
 
 Component Responsibilities:
 ===========================
@@ -56,27 +56,17 @@ Component Responsibilities:
    - Callback coordination between backends and UI
    - Configuration and error handling
 
-2. **AutomationBackend**: 
-   - Abstract interface defining common operations
-   - Backend detection and availability checking
-   - Resource cleanup contracts
-
-3. **PlaywrightBackendV2**: 
-   - State machine-driven Playwright automation
+2. **SimplePlaywrightBackend**: 
+   - Transitions framework-based Playwright automation
    - Improved error handling and resource management
    - Callback integration for UI updates
 
-4. **PlaywrightRegistrationStateMachine**:
-   - 14-state registration workflow management
+3. **RegistrationMachine**:
+   - 12-state registration workflow (transitions framework)
    - Automatic state transitions and condition checking
-   - Error recovery and retry mechanisms
+   - 120-second captcha monitoring with timeout
 
-5. **CaptchaHandler/Monitor**:
-   - Intelligent captcha detection and classification
-   - Real-time monitoring with timeout management
-   - User notification coordination
-
-6. **Supporting Components**:
+4. **Supporting Components**:
    - FormHelpers: Reusable selectors and retry logic
    - ResultDetector: Registration success/failure detection
    - SeleniumBackend: Alternative automation implementation
@@ -84,62 +74,42 @@ Component Responsibilities:
 Usage Patterns:
 ===============
 
-# Basic usage (recommended for new implementations)
-service = AutomationService()
-await service.process_accounts_batch(accounts, backend_name="playwright_v2")
+# Recommended usage (default backend)
+service = AutomationService()  # Uses simple_playwright by default
+await service.register_single_account(account)
 
-# Direct state machine usage
-state_machine = PlaywrightRegistrationStateMachine(account, page)
-success = await state_machine.run_state_machine()
+# Explicit backend selection
+service = AutomationService(backend_type="simple_playwright")
+await service.process_accounts_batch(accounts)
 
-# Advanced captcha handling
-captcha_handler = CaptchaHandler(page, account)
-result = await captcha_handler.handle_captcha_workflow(timeout_seconds=300)
+# CLI usage
+python src/cli.py --username "test123" --password "testpass123" --backend simple_playwright
 
-Migration Guide:
-================
+Key Features:
+=============
 
-From legacy automation:
-1. Replace PlaywrightBackend with PlaywrightBackendV2
-2. State transitions are now automatic - no manual state management needed  
-3. Enhanced captcha handling provides better user experience
-4. Improved error messages and recovery mechanisms
-
-Key Improvements:
-=================
-
-✅ Clear state-driven workflow management
-✅ Enhanced captcha detection and handling
+✅ Transitions framework for clean state management
+✅ 120-second captcha monitoring with user guidance
+✅ Input validation (username 2-14 chars, password 8-20 chars)
 ✅ Automatic retry and error recovery
 ✅ Better separation of concerns
-✅ Comprehensive testing and validation
-✅ Improved maintainability and debugging
+✅ Comprehensive error messages
+✅ Simplified architecture with fewer components
 """
 
 from .automation_service import AutomationService
 from .base_backend import AutomationBackend
-from .playwright_backend import PlaywrightBackend
-from .playwright_backend_v2 import PlaywrightBackendV2
+from .simple_playwright_backend import SimplePlaywrightBackend
 from .selenium_backend import SeleniumBackend
 
 # State machine components
-from .registration_state_machine import (
-    RegistrationStateMachine, RegistrationState, StateContext
-)
-from .playwright_state_machine import PlaywrightRegistrationStateMachine
-from .captcha_handler import CaptchaHandler, CaptchaMonitor
+from .simple_state_machine import RegistrationMachine
 
 __all__ = [
     'AutomationService',
     'AutomationBackend', 
-    'PlaywrightBackend',
-    'PlaywrightBackendV2',
+    'SimplePlaywrightBackend',
     'SeleniumBackend',
     # State machine exports
-    'RegistrationStateMachine',
-    'RegistrationState',
-    'StateContext',
-    'PlaywrightRegistrationStateMachine',
-    'CaptchaHandler',
-    'CaptchaMonitor'
+    'RegistrationMachine'
 ]

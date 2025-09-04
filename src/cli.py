@@ -69,7 +69,7 @@ class CLIHandler:
         parser.add_argument(
             "--backend",
             type=str,
-            choices=["playwright", "playwright_v2", "simple_playwright", "selenium"],
+            choices=["simple_playwright", "selenium"],
             default="simple_playwright",
             help=tr("Automation backend to use (default: simple_playwright)")
         )

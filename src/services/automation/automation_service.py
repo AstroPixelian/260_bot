@@ -11,13 +11,11 @@ from typing import Callable, Optional, Literal, Union
 from ...models.account import Account, AccountStatus
 from ...translation_manager import tr
 from .base_backend import AutomationBackend
-from .playwright_backend import PlaywrightBackend
-from .playwright_backend_v2 import PlaywrightBackendV2
 from .simple_playwright_backend import SimplePlaywrightBackend
 from .selenium_backend import SeleniumBackend
 
 # Type alias for automation backend
-AutomationBackendType = Literal["playwright", "playwright_v2", "simple_playwright", "selenium"]
+AutomationBackendType = Literal["simple_playwright", "selenium"]
 
 
 class BackendFactory:
@@ -26,11 +24,7 @@ class BackendFactory:
     @staticmethod
     def create_backend(backend_type: AutomationBackendType) -> AutomationBackend:
         """Create an automation backend instance"""
-        if backend_type == "playwright":
-            return PlaywrightBackend()
-        elif backend_type == "playwright_v2":
-            return PlaywrightBackendV2()
-        elif backend_type == "simple_playwright":
+        if backend_type == "simple_playwright":
             return SimplePlaywrightBackend()
         elif backend_type == "selenium":
             return SeleniumBackend()
@@ -47,22 +41,6 @@ class BackendFactory:
             backend = SimplePlaywrightBackend()
             if backend.is_available():
                 available.append("simple_playwright")
-        except Exception:
-            pass
-        
-        # Check Playwright V2 (state machine)
-        try:
-            backend = PlaywrightBackendV2()
-            if backend.is_available():
-                available.append("playwright_v2")
-        except Exception:
-            pass
-        
-        # Check Legacy Playwright
-        try:
-            backend = PlaywrightBackend()
-            if backend.is_available():
-                available.append("playwright")
         except Exception:
             pass
         
