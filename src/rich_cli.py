@@ -524,7 +524,7 @@ class RichCLIHandler:
         # 创建结果表格
         results_table = Table(title="📋 详细结果", box=box.ROUNDED)
         results_table.add_column("账号", style="cyan")
-        results_table.add_column("状态", style="center")
+        results_table.add_column("状态", justify="center")
         results_table.add_column("耗时", style="magenta")
         results_table.add_column("备注", style="dim")
         
