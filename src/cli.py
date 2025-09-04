@@ -9,10 +9,15 @@ Provides CLI functionality for single account registration
 import argparse
 import asyncio
 import sys
+from pathlib import Path
 from typing import Optional, Tuple
 
-from .models.account import Account, AccountStatus
-from .services.automation.automation_service import AutomationService
+# 添加项目根目录到路径 - Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from src.models.account import Account, AccountStatus
+from src.services.automation.automation_service import AutomationService
 
 
 # Simplified tr function for CLI mode (without Qt dependency)
