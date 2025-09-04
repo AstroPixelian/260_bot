@@ -221,7 +221,7 @@ class RegistrationStateMachine:
                     RegistrationState.NAVIGATING,
                     RegistrationState.HOMEPAGE_READY,
                     condition=lambda ctx: True,  # 由实现决定
-                    action=lambda ctx: self._log("页面导航完成")
+                    action=None  # 让具体实现处理日志
                 ),
                 StateTransition(
                     RegistrationState.NAVIGATING,
@@ -382,7 +382,7 @@ class RegistrationStateMachine:
             ]
         }
     
-    def _define_state_handlers(self) -> Dict[RegistrationState, Callable[[StateContext], None]]:
+    def _define_state_handlers(self) -> Dict[RegistrationState, Callable[[StateContext], Any]]:
         """定义每个状态的处理逻辑（由子类实现具体逻辑）"""
         return {
             RegistrationState.INITIALIZING: self._handle_initializing,
@@ -478,43 +478,43 @@ class RegistrationStateMachine:
             )
     
     # 状态处理方法（默认实现，子类可重写）
-    def _handle_initializing(self, context: StateContext):
+    async def _handle_initializing(self, context: StateContext):
         """处理初始化状态 - 子类实现"""
         pass
     
-    def _handle_navigating(self, context: StateContext):
+    async def _handle_navigating(self, context: StateContext):
         """处理导航状态 - 子类实现"""
         pass
     
-    def _handle_homepage_ready(self, context: StateContext):
+    async def _handle_homepage_ready(self, context: StateContext):
         """处理首页准备状态 - 子类实现"""
         pass
     
-    def _handle_opening_form(self, context: StateContext):
+    async def _handle_opening_form(self, context: StateContext):
         """处理打开表单状态 - 子类实现"""
         pass
     
-    def _handle_form_ready(self, context: StateContext):
+    async def _handle_form_ready(self, context: StateContext):
         """处理表单准备状态 - 子类实现"""
         pass
     
-    def _handle_filling_form(self, context: StateContext):
+    async def _handle_filling_form(self, context: StateContext):
         """处理填写表单状态 - 子类实现"""
         pass
     
-    def _handle_submitting(self, context: StateContext):
+    async def _handle_submitting(self, context: StateContext):
         """处理提交状态 - 子类实现"""
         pass
     
-    def _handle_waiting_result(self, context: StateContext):
+    async def _handle_waiting_result(self, context: StateContext):
         """处理等待结果状态 - 子类实现"""
         pass
     
-    def _handle_captcha_monitoring(self, context: StateContext):
+    async def _handle_captcha_monitoring(self, context: StateContext):
         """处理验证码监控状态 - 子类实现"""
         pass
     
-    def _handle_verifying_success(self, context: StateContext):
+    async def _handle_verifying_success(self, context: StateContext):
         """处理验证成功状态 - 子类实现"""
         pass
     

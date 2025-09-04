@@ -12,10 +12,12 @@ from ...models.account import Account, AccountStatus
 from ...translation_manager import tr
 from .base_backend import AutomationBackend
 from .playwright_backend import PlaywrightBackend
+from .playwright_backend_v2 import PlaywrightBackendV2
+from .simple_playwright_backend import SimplePlaywrightBackend
 from .selenium_backend import SeleniumBackend
 
 # Type alias for automation backend
-AutomationBackendType = Literal["playwright", "selenium"]
+AutomationBackendType = Literal["playwright", "playwright_v2", "simple_playwright", "selenium"]
 
 
 class BackendFactory:
@@ -26,6 +28,10 @@ class BackendFactory:
         """Create an automation backend instance"""
         if backend_type == "playwright":
             return PlaywrightBackend()
+        elif backend_type == "playwright_v2":
+            return PlaywrightBackendV2()
+        elif backend_type == "simple_playwright":
+            return SimplePlaywrightBackend()
         elif backend_type == "selenium":
             return SeleniumBackend()
         else:
@@ -36,7 +42,23 @@ class BackendFactory:
         """Get list of available backends"""
         available = []
         
-        # Check Playwright
+        # Check Simple Playwright (transitions framework) - preferred
+        try:
+            backend = SimplePlaywrightBackend()
+            if backend.is_available():
+                available.append("simple_playwright")
+        except Exception:
+            pass
+        
+        # Check Playwright V2 (state machine)
+        try:
+            backend = PlaywrightBackendV2()
+            if backend.is_available():
+                available.append("playwright_v2")
+        except Exception:
+            pass
+        
+        # Check Legacy Playwright
         try:
             backend = PlaywrightBackend()
             if backend.is_available():
@@ -85,7 +107,7 @@ class AutomationService:
     are delegated to specific backend implementations.
     """
     
-    def __init__(self, backend_type: AutomationBackendType = "playwright"):
+    def __init__(self, backend_type: AutomationBackendType = "simple_playwright"):
         """Initialize automation service with specified backend"""
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
@@ -95,7 +117,7 @@ class AutomationService:
         self.current_account_index = 0
         self.success_rate = 0.8  # For simulation mode
         
-        # Backend management
+        # Backend management - prefer state machine backend
         self._backend_type = backend_type
         self._backend: Optional[AutomationBackend] = None
         
@@ -327,16 +349,43 @@ class AutomationService:
     
     # Single account registration
     async def register_single_account(self, account: Account) -> bool:
-        """Register a single account"""
+        """Register a single account with full callback support"""
         if not self._backend:
             account.mark_failed("No backend available")
             return False
         
         try:
-            return await self._backend.register_account(account)
+            # Notify start of account processing
+            if self._callbacks.on_account_start:
+                self._callbacks.on_account_start(account)
+            
+            self._log_message(f"Starting registration for: {account.username}")
+            
+            # Register account through backend
+            success = await self._backend.register_account(account)
+            
+            # Log result
+            if success:
+                self._log_message(f"Registration successful for: {account.username}")
+            else:
+                self._log_message(f"Registration failed for: {account.username} - {account.notes}")
+            
+            # Notify completion
+            if self._callbacks.on_account_complete:
+                self._callbacks.on_account_complete(account)
+            
+            return success
+            
         except Exception as e:
             self.logger.error(f"Single account registration error: {e}")
-            account.mark_failed(f"Registration error: {str(e)}")
+            error_msg = f"Registration error: {str(e)}"
+            account.mark_failed(error_msg)
+            self._log_message(f"Registration error for {account.username}: {error_msg}")
+            
+            # Notify completion even on error
+            if self._callbacks.on_account_complete:
+                self._callbacks.on_account_complete(account)
+            
             return False
     
     # Error management

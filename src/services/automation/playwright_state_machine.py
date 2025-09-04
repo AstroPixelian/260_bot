@@ -180,7 +180,10 @@ class PlaywrightRegistrationStateMachine(RegistrationStateMachine):
     async def _handle_navigating(self, context: StateContext):
         """导航状态处理"""
         try:
+            self._log("🔍 DEBUG: _handle_navigating方法被调用")
             self._log("导航到 wan.360.cn")
+            self._log(f"导航前页面URL: {self.page.url}")
+            
             await self.page.goto('https://wan.360.cn/', 
                                 wait_until='domcontentloaded', 
                                 timeout=20000)
@@ -188,6 +191,19 @@ class PlaywrightRegistrationStateMachine(RegistrationStateMachine):
             # 等待页面稳定
             await asyncio.sleep(3)
             
+            # 验证导航是否成功
+            current_url = self.page.url
+            page_title = await self.page.title()
+            self._log(f"导航后页面URL: {current_url}")
+            self._log(f"页面标题: {page_title}")
+            
+            if current_url == "about:blank":
+                raise Exception("页面导航失败，仍停留在about:blank")
+            
+            if "wan.360.cn" not in current_url:
+                self._log(f"⚠️ 警告：页面URL不包含预期的域名，当前URL: {current_url}")
+            
+            self._log("🔍 DEBUG: 手动转换到HOMEPAGE_READY状态")
             self.transition_to(RegistrationState.HOMEPAGE_READY)
             
         except PlaywrightTimeoutError as e:
@@ -211,6 +227,13 @@ class PlaywrightRegistrationStateMachine(RegistrationStateMachine):
         try:
             self._log("点击注册按钮")
             
+            # 监听可能的新标签页
+            async def handle_popup(popup):
+                self._log("检测到弹窗或新标签页，关闭它")
+                await popup.close()
+            
+            self.page.on("popup", handle_popup)
+            
             # 尝试找到并点击注册按钮
             button_clicked = False
             for selector in FormSelectors.REGISTRATION_BUTTONS:
@@ -220,7 +243,22 @@ class PlaywrightRegistrationStateMachine(RegistrationStateMachine):
                     
                     for element in elements:
                         if await element.is_visible():
-                            await element.click()
+                            # 检查是否会打开新标签页的链接
+                            href = await element.get_attribute('href')
+                            target = await element.get_attribute('target')
+                            
+                            if target == '_blank' or (href and 'reg' in href):
+                                # 如果是链接，直接导航而不是点击
+                                if href:
+                                    self._log(f"直接导航到注册页面: {href}")
+                                    await self.page.goto(href)
+                                else:
+                                    # 移除target属性后再点击
+                                    await element.evaluate('el => el.removeAttribute("target")')
+                                    await element.click()
+                            else:
+                                await element.click()
+                            
                             button_clicked = True
                             break
                     
