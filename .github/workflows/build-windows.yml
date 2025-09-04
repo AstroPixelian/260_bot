@@ -48,9 +48,15 @@ jobs:
     - name: Verify environment
       run: |
         uv run python --version
-        uv run python -c "import playwright; print('Playwright version:', playwright.__version__)"
-        uv run python -c "import rich; print('Rich version:', rich.__version__)"
-        uv run python -c "import nuitka; print('Nuitka version:', nuitka.__version__)"
+        echo "Checking Playwright installation..."
+        uv run python -c "import playwright; print('✅ Playwright imported successfully')"
+        echo "Checking Rich installation..."
+        uv run python -c "import rich; print('✅ Rich imported successfully')"
+        echo "Checking Nuitka installation..."
+        uv run python -c "import nuitka; print('✅ Nuitka imported successfully')"
+        echo "Checking project imports..."
+        uv run python -c "from src.models.account import Account; print('✅ Account model imported')"
+        uv run python -c "from src.services.automation.automation_service import AutomationService; print('✅ AutomationService imported')"
         
     - name: Test application before build
       run: |
